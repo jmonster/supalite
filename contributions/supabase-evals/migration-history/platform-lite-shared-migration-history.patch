@@ -1,0 +1,626 @@
+diff --git a/packages/platform-lite/README.md b/packages/platform-lite/README.md
+index eec165f..da33506 100644
+--- a/packages/platform-lite/README.md
++++ b/packages/platform-lite/README.md
+@@ -122,3 +122,25 @@ cp .env.example .env
+ | `PORT` | no | `7070` | Port to listen on |
+ | `ACCESS_TOKEN` | no | _(none)_ | Enforce a specific bearer token; omit to disable auth |
+ | `SEED_DIR` | no | `./seed` | Directory of project seed folders to load on boot |
++
++## Migration history
++
++The HTTP migration routes and Postgres-wire CLI workflows share each project's
++`supabase_migrations.schema_migrations` table. HTTP-applied SQL is recorded in
++`statements`, with optional `name` and `rollback` metadata; rollback SQL is not
++executed when applying a migration. Lists read the current table in version
++order, including CLI pushes and repairs.
++
++HTTP migrations apply their SQL and history row in one PGlite transaction.
++Concurrent HTTP migrations are serialized and allocate unused timestamp-shaped
++versions, including when the clock has not advanced or the CLI already used a
++version. Submitted SQL must not manage its own transaction (including savepoints).
++SQL is parsed and executed with `standard_conforming_strings` enabled.
++This keeps SQL changes and their history atomic. The project remains in-memory;
++sharing the database ledger does not add persistence across platform restarts.
++
++PGlite has one database session per project. As with the existing wire server,
++finish CLI/wire work before using the HTTP API on that project: overlapping wire
++transactions and HTTP requests are not supported. This does not add
++`Idempotency-Key` replay behavior; retrying an HTTP migration can execute SQL
++again. The existing HTTP 201 response with `{ version, name? }` is retained.
+diff --git a/packages/platform-lite/package.json b/packages/platform-lite/package.json
+index f8d319e..df22162 100644
+--- a/packages/platform-lite/package.json
++++ b/packages/platform-lite/package.json
+@@ -25,6 +25,7 @@
+     "hono": "^4.12.34",
+     "@supabase/lite": "catalog:",
+     "openapi-fetch": "^0.13.8",
++    "pgsql-parser": "17.9.15",
+     "zod": "catalog:"
+   },
+   "devDependencies": {
+diff --git a/packages/platform-lite/src/management-api/database.ts b/packages/platform-lite/src/management-api/database.ts
+index e68738f..d218860 100644
+--- a/packages/platform-lite/src/management-api/database.ts
++++ b/packages/platform-lite/src/management-api/database.ts
+@@ -1,4 +1,5 @@
+ import type { ProjectStore } from '../project-store.js';
++import { applyMigration, listMigrations } from '../project/migrations.js';
+ import {
+   createManagementApiRoutes,
+   type ManagementApiRoutes,
+@@ -12,6 +13,12 @@ const runQueryBodySchema = z.object({
+   read_only: z.boolean().optional(),
+ });
+ 
++const migrationBodySchema = z.object({
++  query: z.string().min(1),
++  name: z.string().optional(),
++  rollback: z.string().optional(),
++});
++
+ export function createDatabaseRoutes(store: ProjectStore): ManagementApiRoutes {
+   const routes = createManagementApiRoutes();
+ 
+@@ -35,18 +42,11 @@ export function createDatabaseRoutes(store: ProjectStore): ManagementApiRoutes {
+     }
+   });
+ 
+-  // NOTE: these endpoints track migrations in an in-memory array
+-  // (`project.migrations`), which is independent of the real
+-  // `supabase_migrations.schema_migrations` table. The Postgres-wire path
+-  // (`db push` / `migration repair`) writes that table directly, so it does NOT
+-  // show up here, and migrations recorded here do not appear in the table.
+-  // Anything reconciling the two (e.g. an eval scorer) should read the table
+-  // via `/database/query`, not this endpoint.
+-  routes.get('/v1/projects/:ref/database/migrations', (c) => {
++  routes.get('/v1/projects/:ref/database/migrations', async (c) => {
+     const { ref } = c.req.param();
+     const project = store.get(ref);
+     if (!project) return c.json({ message: 'Project not found' }, 404);
+-    return c.json(project.migrations);
++    return c.json(await listMigrations(project.pglite));
+   });
+ 
+   routes.post('/v1/projects/:ref/database/migrations', async (c) => {
+@@ -54,19 +54,25 @@ export function createDatabaseRoutes(store: ProjectStore): ManagementApiRoutes {
+     const project = store.get(ref);
+     if (!project) return c.json({ message: 'Project not found' }, 404);
+ 
+-    const body = await c.req.json<{ name: string; query: string }>();
+-    const { name, query } = body;
++    let body: unknown;
++    try {
++      body = await c.req.json();
++    } catch {
++      return c.json({ message: 'Invalid JSON body' }, 400);
++    }
++    const parsed = migrationBodySchema.safeParse(body);
++    if (!parsed.success) {
++      return c.json({ message: z.prettifyError(parsed.error) }, 400);
++    }
+ 
+     try {
+-      await project.app.connection.exec(query);
++      const migration = await applyMigration(project.pglite, parsed.data);
++      await project.app.connection.clearSchemaCache();
++      return c.json(migration, 201);
+     } catch (err) {
+       const message = err instanceof Error ? err.message : String(err);
+       return c.json({ message }, 400);
+     }
+-
+-    const version = new Date().toISOString().replace(/\D/g, '').slice(0, 14);
+-    project.migrations.push({ version, name });
+-    return c.json({ version, name }, 201);
+   });
+ 
+   return routes;
+diff --git a/packages/platform-lite/src/project/ProjectInstance.ts b/packages/platform-lite/src/project/ProjectInstance.ts
+index 67f9db8..118907c 100644
+--- a/packages/platform-lite/src/project/ProjectInstance.ts
++++ b/packages/platform-lite/src/project/ProjectInstance.ts
+@@ -1,5 +1,6 @@
+ import {
+   App,
++  ensureHistoryTable,
+   getAuthSchemaSql,
+   getStorageSchemaSql,
+   SUPABASE_AUTH_HELPERS_SQL,
+@@ -14,11 +15,6 @@ import type { EdgeFunctionSeed, LogRow } from '../types.js';
+ import { LOGS_BASE_SQL, seedLogRow } from './log-seeding.js';
+ import { STORAGE_SCHEMA_SUPPLEMENT_SQL } from './storage-schema.js';
+ 
+-export type Migration = {
+-  version: string;
+-  name: string;
+-};
+-
+ export type EdgeFunctionEntry = {
+   id: string;
+   slug: string;
+@@ -64,7 +60,6 @@ export class ProjectInstance {
+   app!: App;
+   pglite!: PGlite;
+   logsDb: PGlite;
+-  migrations: Migration[];
+   functions: Map<string, EdgeFunctionEntry>;
+   /** Edge Function secrets, by name. Injected into the function env at invoke. */
+   secrets: Map<string, string>;
+@@ -76,7 +71,6 @@ export class ProjectInstance {
+     this.organizationId = organizationId;
+     this.status = 'ACTIVE_HEALTHY';
+     this.logsDb = new PGlite();
+-    this.migrations = [];
+     this.functions = new Map();
+     this.secrets = new Map();
+     this.createdAt = new Date().toISOString();
+@@ -109,6 +103,7 @@ export class ProjectInstance {
+     await this.app.connection.exec(getAuthSchemaSql());
+     await this.app.connection.exec(getStorageSchemaSql());
+     await this.app.connection.exec(STORAGE_SCHEMA_SUPPLEMENT_SQL);
++    await ensureHistoryTable(this.app.connection);
+ 
+     if (sql) {
+       await this.app.connection.exec(sql);
+diff --git a/packages/platform-lite/src/project/migrations.ts b/packages/platform-lite/src/project/migrations.ts
+new file mode 100644
+index 0000000..89afc90
+--- /dev/null
++++ b/packages/platform-lite/src/project/migrations.ts
+@@ -0,0 +1,67 @@
++import type { PGlite } from '@electric-sql/pglite';
++import { parse } from 'pgsql-parser';
++
++/** Both the HTTP API and the CLI's Postgres-wire path use this ledger. */
++export async function listMigrations(db: PGlite) {
++  const { rows } = await db.query<{ version: string; name: string | null }>(
++    'SELECT version, name FROM supabase_migrations.schema_migrations ORDER BY version'
++  );
++  return rows.map(({ version, name }) => ({
++    version,
++    name: name ?? undefined,
++  }));
++}
++
++export async function applyMigration(
++  db: PGlite,
++  migration: { query: string; name?: string; rollback?: string }
++) {
++  // A submitted COMMIT/ROLLBACK would escape our transaction. Parse only to
++  // reject transaction control; execute the original SQL so utility commands,
++  // SELECT INTO, comments and dollar-quoted function bodies keep PG semantics.
++  const { stmts } = await parse(migration.query);
++  if (
++    stmts.some(
++      (entry: { stmt?: { TransactionStmt?: unknown } }) =>
++        entry.stmt?.TransactionStmt
++    )
++  ) {
++    throw new Error(
++      'Migration SQL must not contain transaction control statements'
++    );
++  }
++
++  // Use PGlite's exclusive transaction callback, not separate BEGIN/COMMIT
++  // calls: concurrent HTTP requests must allocate versions and apply SQL in
++  // the same critical section. A failure rolls back SQL and history together.
++  return db.transaction(async (tx) => {
++    const timestamp = new Date();
++    let version: string;
++    while (true) {
++      version = timestamp.toISOString().replace(/\D/g, '').slice(0, 14);
++      const { rows } = await tx.query(
++        'SELECT 1 FROM supabase_migrations.schema_migrations WHERE version = $1',
++        [version]
++      );
++      if (rows.length === 0) break;
++      // Keep the CLI's YYYYMMDDHHMMSS format across minute/day boundaries.
++      timestamp.setUTCSeconds(timestamp.getUTCSeconds() + 1);
++    }
++
++    // Match the parser's string-literal rules even if earlier SQL changed the
++    // shared session setting. Otherwise a backslash could hide a COMMIT.
++    await tx.exec('SET LOCAL standard_conforming_strings = on');
++    await tx.exec(migration.query);
++    await tx.query(
++      `INSERT INTO supabase_migrations.schema_migrations
++        (version, name, statements, rollback) VALUES ($1, $2, $3, $4)`,
++      [
++        version,
++        migration.name ?? null,
++        [migration.query],
++        migration.rollback === undefined ? null : [migration.rollback],
++      ]
++    );
++    return { version, name: migration.name };
++  });
++}
+diff --git a/packages/platform-lite/test/migrations.test.ts b/packages/platform-lite/test/migrations.test.ts
+new file mode 100644
+index 0000000..8a75784
+--- /dev/null
++++ b/packages/platform-lite/test/migrations.test.ts
+@@ -0,0 +1,275 @@
++import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
++import { ensureHistoryTable } from '@supabase/lite';
++import { createPlatform, type PlatformHandle } from '../src/app.js';
++import { request } from './helpers.js';
++
++const ref = 'migrations-proj';
++const path = `/v1/projects/${ref}/database/migrations`;
++
++describe('shared migration history', () => {
++  let platform: PlatformHandle;
++
++  beforeEach(async () => {
++    platform = await createPlatform({ projects: [{ ref }] });
++    // Also lets these regressions exercise the old implementation against the
++    // same real CLI-compatible table, independently of init provisioning.
++    await ensureHistoryTable(platform.getProject(ref)!.app.connection);
++  });
++
++  afterEach(async () => {
++    vi.useRealTimers();
++    await platform.dispose();
++  });
++
++  it('lists the database ledger in version order and sees repairs immediately', async () => {
++    const db = platform.getProject(ref)!.pglite;
++    expect((await request(platform.app, 'GET', path)).data).toEqual([]);
++    await db.query(
++      `INSERT INTO supabase_migrations.schema_migrations (version, name, statements)
++       VALUES ('20260202000000', 'second', ARRAY['SELECT 2']),
++              ('20260101000000', NULL, NULL)`
++    );
++    expect((await request(platform.app, 'GET', path)).data).toEqual([
++      { version: '20260101000000' },
++      { version: '20260202000000', name: 'second' },
++    ]);
++    await db.query(
++      "DELETE FROM supabase_migrations.schema_migrations WHERE version = '20260101000000'"
++    );
++    expect((await request(platform.app, 'GET', path)).data).toEqual([
++      { version: '20260202000000', name: 'second' },
++    ]);
++  });
++
++  it('stores HTTP SQL and optional rollback in the CLI ledger without running rollback', async () => {
++    const query =
++      'CREATE TABLE http_table (id int); INSERT INTO http_table VALUES (1);';
++    const rollback = 'DROP TABLE http_table;';
++    const response = await request<{ version: string; name: string }>(
++      platform.app,
++      'POST',
++      path,
++      { name: 'http_migration', query, rollback }
++    );
++    expect(response.status).toBe(201);
++    expect(response.data).toEqual({
++      version: expect.stringMatching(/^\d{14}$/),
++      name: 'http_migration',
++    });
++    const { rows } = await platform
++      .getProject(ref)!
++      .pglite.query(
++        'SELECT version, name, statements, rollback FROM supabase_migrations.schema_migrations'
++      );
++    expect(rows).toEqual([
++      { ...response.data, statements: [query], rollback: [rollback] },
++    ]);
++    expect(
++      (await platform.getProject(ref)!.pglite.query('SELECT * FROM http_table'))
++        .rows
++    ).toEqual([{ id: 1 }]);
++    expect((await request(platform.app, 'GET', path)).data).toEqual([
++      response.data,
++    ]);
++  });
++
++  it('allows an omitted name and preserves quoted SQL and dollar-quoted bodies', async () => {
++    const query = `
++      CREATE FUNCTION migration_message() RETURNS text LANGUAGE sql AS $$
++        SELECT 'quoted; ''text'' $platform_lite_migration$ $platform_lite_migration__sql$'
++      $$;
++      CREATE TABLE messages AS SELECT migration_message() AS message;
++    `;
++    const response = await request(platform.app, 'POST', path, { query });
++    expect(response.status).toBe(201);
++    expect(response.data).toEqual({
++      version: expect.stringMatching(/^\d{14}$/),
++    });
++    const { rows } = await platform
++      .getProject(ref)!
++      .pglite.query(
++        'SELECT name, statements, rollback FROM supabase_migrations.schema_migrations'
++      );
++    expect(rows).toEqual([{ name: null, statements: [query], rollback: null }]);
++    expect((await request(platform.app, 'GET', path)).data).toEqual([
++      response.data,
++    ]);
++  });
++
++  it('preserves SELECT INTO, nested comments, and transaction words inside SQL strings', async () => {
++    const response = await request(platform.app, 'POST', path, {
++      query: `
++        /* outer comment; /* BEGIN; */ COMMIT; */
++        SELECT 'COMMIT; ROLLBACK; SAVEPOINT x;' AS message INTO select_into_table;
++        DO $$ BEGIN RAISE NOTICE 'BEGIN; COMMIT;'; END $$;
++      `,
++    });
++    expect(response.status).toBe(201);
++    expect(
++      (
++        await platform
++          .getProject(ref)!
++          .pglite.query('SELECT * FROM select_into_table')
++      ).rows
++    ).toEqual([{ message: 'COMMIT; ROLLBACK; SAVEPOINT x;' }]);
++  });
++
++  it('keeps parser and execution string rules aligned after session settings change', async () => {
++    const db = platform.getProject(ref)!.pglite;
++    await db.exec('SET standard_conforming_strings = off');
++    const response = await request(platform.app, 'POST', path, {
++      query: String.raw`CREATE TABLE escaped(id int); SELECT '\'; SELECT '; COMMIT; --';
++        SELECT missing_column;`,
++    });
++    expect(response.status).toBe(400);
++    expect(
++      (await db.query("SELECT to_regclass('escaped') AS relation")).rows
++    ).toEqual([{ relation: null }]);
++    expect((await request(platform.app, 'GET', path)).data).toEqual([]);
++  });
++
++  it('rolls back successful earlier statements when later SQL fails', async () => {
++    const response = await request(platform.app, 'POST', path, {
++      name: 'failed',
++      query: 'CREATE TABLE partial_apply(id int); SELECT missing_column;',
++    });
++    expect(response.status).toBe(400);
++    expect(
++      (
++        await platform
++          .getProject(ref)!
++          .pglite.query("SELECT to_regclass('partial_apply') AS relation")
++      ).rows
++    ).toEqual([{ relation: null }]);
++    expect((await request(platform.app, 'GET', path)).data).toEqual([]);
++  });
++
++  it('rolls back applied SQL when writing its history fails', async () => {
++    const db = platform.getProject(ref)!.pglite;
++    await db.exec(`ALTER TABLE supabase_migrations.schema_migrations
++      ADD CONSTRAINT reject_history CHECK (name <> 'rejected')`);
++    const response = await request(platform.app, 'POST', path, {
++      name: 'rejected',
++      query: 'CREATE TABLE must_rollback(id int)',
++    });
++    expect(response.status).toBe(400);
++    expect(
++      (await db.query("SELECT to_regclass('must_rollback') AS relation")).rows
++    ).toEqual([{ relation: null }]);
++    expect((await request(platform.app, 'GET', path)).data).toEqual([]);
++  });
++
++  it.each([
++    'BEGIN; SELECT 1; COMMIT;',
++    'COMMIT;',
++    'ROLLBACK;',
++    'END;',
++    'ABORT;',
++    'SAVEPOINT migration_savepoint;',
++    'RELEASE SAVEPOINT migration_savepoint;',
++    'ROLLBACK TO SAVEPOINT migration_savepoint;',
++    'START TRANSACTION;',
++    'DO $$ BEGIN COMMIT; END $$;',
++  ])(
++    'does not let transaction control escape atomicity: %s',
++    async (control) => {
++      const response = await request(platform.app, 'POST', path, {
++        name: 'escape',
++        query: `CREATE TABLE escaped(id int); ${control} SELECT missing_column;`,
++      });
++      expect(response.status).toBe(400);
++      expect(
++        (
++          await platform
++            .getProject(ref)!
++            .pglite.query("SELECT to_regclass('escaped') AS relation")
++        ).rows
++      ).toEqual([{ relation: null }]);
++      expect((await request(platform.app, 'GET', path)).data).toEqual([]);
++    }
++  );
++
++  it('allocates distinct versions for concurrent requests without replacing CLI history', async () => {
++    const db = platform.getProject(ref)!.pglite;
++    await db.exec(`CREATE TABLE effects(label text);
++      INSERT INTO supabase_migrations.schema_migrations (version, name)
++      VALUES ('20261003235959', 'cli_one'), ('20261004000000', 'cli_two')`);
++    vi.useFakeTimers({ toFake: ['Date'] });
++    vi.setSystemTime(new Date('2026-10-03T23:59:59Z'));
++    const responses = await Promise.all(
++      Array.from({ length: 4 }, (_, i) =>
++        request<{ version: string }>(platform.app, 'POST', path, {
++          name: `http_${i}`,
++          query: `INSERT INTO effects VALUES ('${i}')`,
++        })
++      )
++    );
++    expect(responses.map((response) => response.status)).toEqual([
++      201, 201, 201, 201,
++    ]);
++    expect(responses.map((response) => response.data.version).sort()).toEqual([
++      '20261004000001',
++      '20261004000002',
++      '20261004000003',
++      '20261004000004',
++    ]);
++    const { rows } = await db.query(
++      'SELECT version, name FROM supabase_migrations.schema_migrations ORDER BY version'
++    );
++    expect(rows.slice(0, 2)).toEqual([
++      { version: '20261003235959', name: 'cli_one' },
++      { version: '20261004000000', name: 'cli_two' },
++    ]);
++    expect(rows).toHaveLength(6);
++    expect((await db.query('SELECT * FROM effects')).rows).toHaveLength(4);
++  });
++
++  it('rejects a SQL uniqueness violation without retrying or recording it', async () => {
++    const db = platform.getProject(ref)!.pglite;
++    await db.exec(
++      'CREATE TABLE unique_values(id int PRIMARY KEY); INSERT INTO unique_values VALUES (1)'
++    );
++    const response = await request(platform.app, 'POST', path, {
++      query:
++        'INSERT INTO unique_values VALUES (2); INSERT INTO unique_values VALUES (1)',
++    });
++    expect(response.status).toBe(400);
++    expect((await db.query('SELECT * FROM unique_values')).rows).toEqual([
++      { id: 1 },
++    ]);
++    expect((await request(platform.app, 'GET', path)).data).toEqual([]);
++  });
++
++  it.each([
++    {},
++    { query: '' },
++    { query: 1 },
++    { query: 'SELECT 1', name: 1 },
++    { query: 'SELECT 1', rollback: 1 },
++  ])('validates the documented migration body: %j', async (body) => {
++    expect((await request(platform.app, 'POST', path, body)).status).toBe(400);
++    expect((await request(platform.app, 'GET', path)).data).toEqual([]);
++  });
++
++  it('rejects malformed JSON and unknown projects', async () => {
++    const response = await platform.app.request(path, {
++      method: 'POST',
++      headers: { 'Content-Type': 'application/json' },
++      body: '{',
++    });
++    expect(response.status).toBe(400);
++    expect(await response.json()).toEqual({ message: 'Invalid JSON body' });
++    for (const method of ['GET', 'POST']) {
++      expect(
++        (
++          await request(
++            platform.app,
++            method,
++            '/v1/projects/missing/database/migrations',
++            method === 'POST' ? { query: 'SELECT 1' } : undefined
++          )
++        ).status
++      ).toBe(404);
++    }
++  });
++});
+diff --git a/packages/platform-lite/test/pg-wire.test.ts b/packages/platform-lite/test/pg-wire.test.ts
+index 34502b8..1e98f89 100644
+--- a/packages/platform-lite/test/pg-wire.test.ts
++++ b/packages/platform-lite/test/pg-wire.test.ts
+@@ -1,6 +1,7 @@
+ import { describe, it, expect } from 'vitest';
+ import { connect, type Socket } from 'node:net';
+ import { createPlatform } from '../src/app.js';
++import { request } from './helpers.js';
+ 
+ /**
+  * Coverage for the platform's Postgres-wire surface: the SSL negotiation shim
+@@ -53,6 +54,79 @@ describe('platform pg-wire surface', () => {
+     }
+   });
+ 
++  it('shares migration history with HTTP in both directions and isolates tenants', async () => {
++    const one = 'ledgeronexxxxxxxxxxx';
++    const two = 'ledgertwoxxxxxxxxxxx';
++    const platform = await createPlatform({
++      projects: [{ ref: one }, { ref: two }],
++    });
++    const pg = await platform.listenPg({ hostname: '127.0.0.1' });
++    const path = (ref: string) => `/v1/projects/${ref}/database/migrations`;
++    try {
++      // The same SQL shape used by the CLI, sent through the real wire server.
++      await wireRoundTrip(
++        pg.port,
++        one,
++        `
++        CREATE SCHEMA IF NOT EXISTS supabase_migrations;
++        CREATE TABLE IF NOT EXISTS supabase_migrations.schema_migrations (
++          version text NOT NULL PRIMARY KEY, statements text[], name text
++        );
++        INSERT INTO supabase_migrations.schema_migrations (version, name, statements)
++        VALUES ('20260101000000', 'wire_migration', ARRAY['SELECT 1']);
++      `
++      );
++      expect((await request(platform.app, 'GET', path(one))).data).toEqual([
++        { version: '20260101000000', name: 'wire_migration' },
++      ]);
++      expect((await request(platform.app, 'GET', path(two))).data).toEqual([]);
++
++      const applied = await request(platform.app, 'POST', path(two), {
++        name: 'http_migration',
++        query: 'CREATE TABLE http_table(id int)',
++      });
++      expect(applied.status).toBe(201);
++      expect(
++        (
++          await wireRoundTrip(
++            pg.port,
++            two,
++            `
++        SELECT * FROM supabase_migrations.schema_migrations
++        WHERE name = 'http_migration' AND statements = ARRAY['CREATE TABLE http_table(id int)']
++      `
++          )
++        ).rowCount
++      ).toBe(1);
++      expect(
++        (
++          await wireRoundTrip(
++            pg.port,
++            one,
++            `
++        SELECT * FROM supabase_migrations.schema_migrations WHERE name = 'http_migration'
++      `
++          )
++        ).rowCount
++      ).toBe(0);
++
++      await wireRoundTrip(
++        pg.port,
++        one,
++        `
++        DELETE FROM supabase_migrations.schema_migrations WHERE version = '20260101000000'
++      `
++      );
++      expect((await request(platform.app, 'GET', path(one))).data).toEqual([]);
++      expect((await request(platform.app, 'GET', path(two))).data).toEqual([
++        applied.data,
++      ]);
++    } finally {
++      await pg.close();
++      await platform.dispose();
++    }
++  });
++
+   it('serves concurrent connections to one project from a shared backend', async () => {
+     const ref = 'concurrentprojxxxxxx';
+     const platform = await createPlatform({
+diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
+index 9c5a0fb..ec95943 100644
+--- a/pnpm-lock.yaml
++++ b/pnpm-lock.yaml
+@@ -348,6 +348,9 @@ importers:
+       openapi-fetch:
+         specifier: ^0.13.8
+         version: 0.13.8
++      pgsql-parser:
++        specifier: 17.9.15
++        version: 17.9.15
+       zod:
+         specifier: 'catalog:'
+         version: 4.4.3

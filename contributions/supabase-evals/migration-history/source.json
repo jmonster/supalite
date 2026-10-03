@@ -1,0 +1,42 @@
+{
+  "upstream_repository": "https://github.com/supabase/evals",
+  "upstream_commit": "10790e7fef8788c16c80697a16682d5ebbeb76c3",
+  "upstream_license": "Apache-2.0",
+  "verified_on": "2026-10-03",
+  "target_package": "packages/platform-lite",
+  "patch": "platform-lite-shared-migration-history.patch",
+  "changed_files": [
+    {
+      "path": "packages/platform-lite/README.md",
+      "sha256": "cc0d95c956f10996d6ddb4dd579af9698295dfe600a729e15c42003034aea3ea"
+    },
+    {
+      "path": "packages/platform-lite/package.json",
+      "sha256": "e0b408b62cb6625f2c5709dab3c32cfaa3041e8006ad53f41e5314be3cc92ff2"
+    },
+    {
+      "path": "packages/platform-lite/src/management-api/database.ts",
+      "sha256": "5113c6fbf5cafc6724b6b0f688f76e4202177cb9e1b8638fc576a47eed1c5c76"
+    },
+    {
+      "path": "packages/platform-lite/src/project/ProjectInstance.ts",
+      "sha256": "ec03fa946aa8ab504f9f1ac6879db4558d8c4fb84e0148104fc7dd00db1bd8af"
+    },
+    {
+      "path": "packages/platform-lite/src/project/migrations.ts",
+      "sha256": "ae40aaba9db21dbdec4f2052fd21cf12ce4ba2e59ae6d1dbfd175e944294e7ad"
+    },
+    {
+      "path": "packages/platform-lite/test/migrations.test.ts",
+      "sha256": "62ede9c4c0ca4f50a7829601b7848c70c2959f9a4442825b1408d6dd2a77aec0"
+    },
+    {
+      "path": "packages/platform-lite/test/pg-wire.test.ts",
+      "sha256": "e4cb60aadedcf8acb841627ba3dd372a4c44e4b955b17e407344a308a299bab9"
+    },
+    {
+      "path": "pnpm-lock.yaml",
+      "sha256": "3b6b323c737b4bcc711f3d2339081efaf7809bd8ec08fc9950e703450f9b2634"
+    }
+  ]
+}
