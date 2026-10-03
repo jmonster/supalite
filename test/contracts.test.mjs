@@ -97,6 +97,7 @@ for (const backend of ["node", "libsql"]) {
       for (let i = 0; i < 17; i++) deep = { child: deep };
       const errors = [
         ["{bad:1}", "22P02"],
+        ["1000000000000000100", "22003"],
         ["[1,]", "22P02"],
         ['"\\u0000"', "22P05"],
         ['"\\ud800"', "22P02"],
@@ -111,10 +112,14 @@ for (const backend of ["node", "libsql"]) {
           "54000",
         ],
       ];
-      const largeObject = Object.fromEntries(Array.from({ length: 21 }, (_, index) => [`field${index}`, index]));
-      const aggregate = await from().contains('body', largeObject).containedBy('body', largeObject);
+      const largeObject = Object.fromEntries(
+        Array.from({ length: 21 }, (_, index) => [`field${index}`, index]),
+      );
+      const aggregate = await from()
+        .contains("body", largeObject)
+        .containedBy("body", largeObject);
       assert.equal(aggregate.status, 400);
-      assert.equal(aggregate.error?.code, '54000');
+      assert.equal(aggregate.error?.code, "54000");
       assert.match(aggregate.error.message, /100 total bound parameters/);
       // Expected rejected requests are part of the contract, not noisy failures.
       const oldError = console.error;

@@ -151,8 +151,23 @@ export function tryJsonbContainment(
 }
 
 /** Portable D1-sized request budget, including other filters, paths and paging. */
-export function assertJsonbQueryLimits(query: { sql: string; parameters: readonly unknown[] }): void {
-  if (!['__jsonb_fast_input', '__jsonb_walk', '__jsonb_path_input', '__jsonb_shallow_input'].some(marker => query.sql.includes(marker))) return;
-  if (query.parameters.length > 100) throw new JsonbFilterError('JSONB request exceeds 100 total bound parameters');
-  if (new TextEncoder().encode(query.sql).byteLength > 100_000) throw new JsonbFilterError('JSONB request exceeds 100000 SQL bytes');
+export function assertJsonbQueryLimits(query: {
+  sql: string;
+  parameters: readonly unknown[];
+}): void {
+  if (
+    ![
+      "__jsonb_fast_input",
+      "__jsonb_walk",
+      "__jsonb_path_input",
+      "__jsonb_shallow_input",
+    ].some((marker) => query.sql.includes(marker))
+  )
+    return;
+  if (query.parameters.length > 100)
+    throw new JsonbFilterError(
+      "JSONB request exceeds 100 total bound parameters",
+    );
+  if (new TextEncoder().encode(query.sql).byteLength > 100_000)
+    throw new JsonbFilterError("JSONB request exceeds 100000 SQL bytes");
 }

@@ -138,6 +138,7 @@ test("compiler rejects excess depth, nodes, parameters and invalid values before
     Array.from({ length: 129 }, () => null),
     Object.fromEntries(Array.from({ length: 33 }, (_, i) => [`k${i}`, i])),
     Infinity,
+    Number.MAX_SAFE_INTEGER + 1,
     undefined,
   ];
   for (const value of cases)

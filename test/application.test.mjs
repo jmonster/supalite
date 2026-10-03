@@ -152,7 +152,12 @@ CREATE POLICY self_docs ON documents FOR ALL TO authenticated USING(owner_id=aut
     );
     await check(
       "repeated_jsonb_filters_with_direct_rls",
-      client.from("documents").select("id").contains("body", { active: true }).contains("body", { profile: { plan: "pro" } }).order("id"),
+      client
+        .from("documents")
+        .select("id")
+        .contains("body", { active: true })
+        .contains("body", { profile: { plan: "pro" } })
+        .order("id"),
       [1],
     );
     await check(

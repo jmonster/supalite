@@ -84,6 +84,16 @@ function validate(value: Json, limits: CompileLimits): number {
         `JSONB filter exceeds depth ${limits.maxDepth}`,
       );
     if (typeof current.value === "string") validateString(current.value);
+    if (
+      typeof current.value === "number" &&
+      Number.isInteger(current.value) &&
+      !Number.isSafeInteger(current.value)
+    ) {
+      throw new JsonbFilterError(
+        "JSONB filter integers must be within JavaScript's safe integer range",
+        "22003",
+      );
+    }
     if (typeof current.value === "number" && !Number.isFinite(current.value)) {
       throw new JsonbFilterError(
         "JSONB filter contains a non-finite number",

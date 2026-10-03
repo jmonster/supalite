@@ -33,11 +33,14 @@ if (
 // Surgical seams: retain raw containment literals; dispatch positive/NOT
 // predicates; preserve repeated filters and existing AND groups. All untouched bytes remain original.
 const patches = [
-  ['return tm(t,{...r,dialect:e,db:s.db??r.db,introspection:s.introspection,schema:s.schema,requestSchema:s.requestSchema})}', 'return __jsonbCheck(tm(t,{...r,dialect:e,db:s.db??r.db,introspection:s.introspection,schema:s.schema,requestSchema:s.requestSchema}),e)}'],
+  [
+    "return tm(t,{...r,dialect:e,db:s.db??r.db,introspection:s.introspection,schema:s.schema,requestSchema:s.requestSchema})}",
+    "return __jsonbCheck(tm(t,{...r,dialect:e,db:s.db??r.db,introspection:s.introspection,schema:s.schema,requestSchema:s.requestSchema}),e)}",
+  ],
   ["n[r]?Object.assign(n[r],i):n[r]=i;", "__jsonbMerge(n,r,i);"],
   [
     "n[`$${t}`]=i;return",
-    'n[`$${t}`]=t==="and"&&Array.isArray(n.$and)?[...n.$and,...i]:i;return',
+    'n[`$${t}`]=t==="and"&&Object.hasOwn(n,"$and")&&Array.isArray(n.$and)?[...n.$and,...i]:i;return',
   ],
   [
     "return n?{$not:{[a]:u}}:{[a]:u}",
