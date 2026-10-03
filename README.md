@@ -20,7 +20,7 @@ npm ci
 npm test
 ```
 
-`npm test` first verifies and prepares the baseline, then creates a table on each adapter and checks SDK insert, select, equality-filter, and exact-count operations. Schema setup uses the package's migrator. These smoke tests do not establish comprehensive compatibility.
+`npm test` first verifies and prepares the baseline, then checks the PGlite array regressions below and SDK insert, select, equality-filter, and exact-count operations on each adapter. Schema setup in the SDK smoke tests uses the package's migrator. These checks do not establish comprehensive compatibility.
 
 To verify and copy the distribution without running the smoke tests:
 
@@ -29,6 +29,22 @@ npm run prepare:baseline
 ```
 
 Generated files and installed dependencies are ignored; the vendored `dist/` files are tracked.
+
+## PGlite NULL-array fix
+
+### Problem
+
+When Lite reads temporal or text arrays, PGlite 0.4.5 decodes SQL NULL elements as the string `"NULL"`. Lite's upgrade exporter consequently writes quoted `'NULL'` elements, causing `date[]`, `time[]`, `timetz[]`, `timestamp[]`, and `timestamptz[]` imports to fail with SQLSTATE `22007`. In `text[]`, the same bug silently changes nulls into literal strings.
+
+### Change
+
+Pin PGlite to 0.4.6, the first release containing the [upstream array-NULL parser fix](https://github.com/electric-sql/pglite/commit/2aa4d1ae89ba20283441f4b7088e1d25c1b60f8e). A root npm override applies it to Lite's exact 0.4.5 dependency. All 77 published Lite files, including its original `package.json`, remain byte-identical; the equivalent upstream source change is a PGlite dependency and lockfile bump. No parser or exporter implementation is replaced.
+
+### Tests
+
+The regression tests use Lite's actual PGlite adapter and the bundled upgrade exporter. They check all five temporal array types and `text[]`, including mixed and all-null arrays, whole-column NULL, empty arrays, six-digit fractional seconds, timezone offsets, and quoted `"NULL"` versus SQL NULL. Exported inserts are replayed into a fresh PGlite database and compared using server-side SQL text and null checks.
+
+Multidimensional decoding is also checked. Multidimensional upgrade export remains an existing exporter limitation and is outside this dependency fix. PGlite 0.4.6 also includes ICU, initialization/exit-code, and filesystem API changes; the full [release changelog](https://github.com/electric-sql/pglite/blob/main/packages/pglite/CHANGELOG.md#046) lists them.
 
 ## License
 
