@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.generated/
+reports/*.json
+*.db
+*.db-shm
+*.db-wal

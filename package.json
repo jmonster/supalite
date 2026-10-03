@@ -1,0 +1,30 @@
+{
+  "name": "supalite-jsonb-parity",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Portable JSONB containment predicates and a reproducible Supabase Lite 0.11.0 integration harness",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepare:baseline": "node scripts/prepare-baseline.mjs",
+    "test": "npm run build && npm run prepare:baseline && node --test --test-concurrency=1 test/*.test.mjs",
+    "test:core": "npm run build && node --test test/compiler.test.mjs",
+    "demo": "npm run build && npm run prepare:baseline && node examples/catalog.mjs",
+    "benchmark": "npm run build && npm run prepare:baseline && node scripts/benchmark.mjs",
+    "check": "npm test"
+  },
+  "dependencies": {
+    "kysely": "0.28.11"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.4.5",
+    "@libsql/client": "0.17.4",
+    "@supabase/lite": "0.11.0",
+    "@supabase/supabase-js": "2.117.2",
+    "typescript": "5.9.3"
+  }
+}
