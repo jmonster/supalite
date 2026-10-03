@@ -33,3 +33,14 @@ Generated files and installed dependencies are ignored; the vendored `dist/` fil
 ## License
 
 The upstream Apache-2.0 license is preserved in [LICENSE](LICENSE) and [upstream/lite-0.11.0/LICENSE](upstream/lite-0.11.0/LICENSE). See [NOTICE](NOTICE) for attribution.
+
+## Identity upgrade fix
+
+The local candidate preserves identity metadata and existing IDs during upgrade,
+then restores safe sequence continuation. `npm test` runs baseline regressions
+and candidate SQL replay tests on SQLite and PGlite sources. The published
+`upstream/` distribution stays unchanged; generated candidate artifacts use
+hash-guarded seams and readable TypeScript in `src/upgrade/identity.ts`.
+
+See [scope and verification](docs/upgrade-identity.md) for supported cases and
+limitations. These checks do not constitute a full Supabase upgrade run.
