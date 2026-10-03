@@ -1,0 +1,11 @@
+Supalite contributions
+
+This is an independent contribution workspace for Supabase Lite.
+
+The development harness uses the published @supabase/lite 0.11.0 package,
+licensed under Apache-2.0. Generated baseline and patched package copies retain
+that package's LICENSE. Its published package integrity and the modified bundle
+checksum are verified by scripts/prepare-baseline.mjs.
+
+The feature modules in src/ are original TypeScript. This workspace is not a
+recovery of the unpublished upstream TypeScript repository.
