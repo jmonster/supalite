@@ -1,0 +1,90 @@
+---
+title: "Storage overview"
+description: "Storage API for @supabase/lite: experimental flag, endpoint coverage, and supabase-js parity."
+---
+
+import { Aside, Card, CardGrid, Steps } from '@astrojs/starlight/components';
+
+Supabase Lite ships a Storage API at `/storage/v1/*` covering all 20 endpoints upstream Supabase Storage exposes to `supabase-js`: bucket CRUD, object upload/download/list/remove/move/copy, signed URLs, and image transformations. The same policies on `storage.buckets` and `storage.objects` work on SQLite, PGlite, and PostgreSQL. For the shipped surface, `@supabase/supabase-js`'s `storage` client works unchanged. `upload()`, `update()`, and `uploadToSignedUrl()` accept browser `File` and `Blob` values through the canonical Storage JS multipart request without a client adapter. Multipart cache control, user metadata, and MIME overrides are preserved.
+
+<Aside type="caution">
+Storage is **experimental** and disabled by default. It is gated behind the `EXPERIMENTAL_STORAGE` environment variable and requires you to wire a storage adapter explicitly. Don't rely on it in production.
+</Aside>
+
+## Enabling it
+
+Storage requires three things to be true at once:
+
+<Steps>
+
+1. **Set the experimental flag**
+
+   ```bash
+   EXPERIMENTAL_STORAGE=1 lite dev
+   ```
+
+   Without this, `/storage/v1/*` returns 404 and no storage schema is applied, even if `storage.enabled` is set.
+
+1. **Enable storage in config**
+
+   ```toml
+   [storage]
+   enabled = true
+   file_size_limit = "50MiB"
+   ```
+
+1. **Attach a storage adapter**
+
+   If you construct the `App` programmatically, set an adapter before calling `init()`:
+
+   ```ts
+   import { App } from "@supabase/lite";
+   import { FilesystemStorageAdapter } from "@supabase/lite/storage/adapters/FilesystemStorageAdapter";
+
+   const app = new App({ connection, storage: { enabled: true } });
+   app._storageAdapter = new FilesystemStorageAdapter({ basePath: "./supabase/.temp/storage" });
+   await app.init();
+   ```
+
+   The `lite` CLI (`lite dev` / `lite start`) auto-wires a `FilesystemStorageAdapter` under `.temp/storage` for you when `EXPERIMENTAL_STORAGE=1` and `storage.enabled` are both set, so CLI users only need steps 1 and 2.
+
+</Steps>
+
+<Aside type="note">
+The explicit-adapter requirement is a stopgap while storage is experimental. Once stable, an adapter will be required outright (error instead of silent no-op) rather than auto-wired by the CLI. Confirm current behavior against the `EXPERIMENTAL_STORAGE` handling in your installed version if you're embedding the `App` class directly.
+</Aside>
+
+## What's implemented
+
+All 20 supabase-js storage methods map to real endpoints: `upload`, `download`, `list`, `remove`, `move`, `copy`, `info`, `exists`, `update`, `getPublicUrl`, `createSignedUrl`, `createSignedUrls`, `createSignedUploadUrl`, `uploadToSignedUrl`, `listBuckets`, `getBucket`, `createBucket`, `updateBucket`, `deleteBucket`, `emptyBucket`.
+
+`/storage/v1` is transform-only for API keys, like upstream self-hosted Kong: a missing or invalid `apikey` never 401s at the gateway, so public objects, signed URLs, and S3 presigned flows stay keyless. When a key is present, it resolves to a role — a secret key satisfies storage's own authed routes as `service_role`. See [API keys](/auth/overview#api-keys).
+
+Storage verifies bearer JWTs with the Data API verifier. Missing credentials become `anon`; protected operations return a Storage-shaped 401 for a malformed, invalid, or expired bearer JWT. Object `GET`, `HEAD`, and info routes tolerate an invalid JWT so stale sessions do not block public objects. As upstream does, an unauthenticated request to those routes receives `NoSuchBucket` for a private bucket; a verified `anon` JWT can still use an `anon` `SELECT` policy. `service_role` bypasses Storage RLS, while custom string roles remain available to `TO role` policies. Uploads made with a verified JWT carrying a `sub` claim populate `owner_id` and `owner` from that claim; `service_role` uploads remain ownerless. Public buckets bypass object `SELECT` for `GET`, `HEAD`, and info; listing, signing, copy, and move remain caller-scoped. Signed URL redemption uses the authorization decision made when the URL was created. These behaviors match [Supabase Storage access control](https://supabase.com/docs/guides/storage/security/access-control).
+
+The protected `storage` schema is not exposed through `/rest/v1` by default; use `supabase.storage` and `/storage/v1` for normal operations. You may explicitly add `storage` to `api.schemas` for direct metadata reads. Treat those endpoints as read-only: PostgREST writes may succeed when policies permit, but they are unsupported because they do not update the backing filesystem or object store. On SQLite, Storage's system declaration keeps `storage.buckets` and `storage.objects` fail-closed even if external runtime metadata omits their RLS entries: no policies means no caller access, while `service_role` keeps its upstream bypass.
+
+Storage policies can use cross-table membership lookups. Each nested relation resolves independently: `storage.buckets` stays in `storage`, `public.workspace_members` stays in `public`, and an unqualified application table uses `public`. The enclosing `storage.objects` policy does not pass its schema to a child query. Prefer explicit schemas when a policy crosses between Storage and application tables; see [Row Level Security](/database/rls#cross-table-membership-policies) for a complete pattern.
+
+The upstream policy helpers `storage.foldername()`, `storage.filename()`, `storage.extension()`, `storage.operation()`, `storage.allow_only_operation()`, and `storage.allow_any_operation()` work on SQLite, PGlite, and PostgreSQL. On SQLite/D1, the three path helpers can compare with columns inside correlated `EXISTS` clauses in either operand order, or test membership with `IN (SELECT ...)`. Use those forms for membership-table policies; translated RLS does not support general concatenation such as `name LIKE workspace_id || '/%'`. `storage.operation()` returns the complete upstream route identifier, such as `storage.object.upload`, and can be used with comparison, `LIKE`/`ILIKE`, `IN`, and null predicates; the `allow_*` helpers accept identifiers with or without the `storage.` prefix. Policies can therefore distinguish actions such as object listing from authenticated download. See [Supabase Storage helper functions](https://supabase.com/docs/guides/storage/schema/helper-functions) for their canonical policy forms.
+
+```ts
+const { data, error } = await supabase.storage
+  .from("avatars")
+  .upload("public/avatar1.png", file);
+
+const { data: url } = supabase.storage
+  .from("avatars")
+  .getPublicUrl("public/avatar1.png");
+```
+
+<CardGrid>
+  <Card title="Storage adapters">
+    Filesystem, S3-compatible, and image transformation backends, and how to configure each. [Read more →](/storage/adapters/)
+  </Card>
+  <Card title="Storage limitations">
+    What's not implemented yet: TUS uploads, webhooks, and the server-side S3 protocol. [Read more →](/storage/limitations/)
+  </Card>
+</CardGrid>
+
+For the Storage concepts that behave the same as upstream (bucket/object model, public vs. private buckets, MIME allow-lists), see the [Supabase Storage docs](https://supabase.com/docs/guides/storage).

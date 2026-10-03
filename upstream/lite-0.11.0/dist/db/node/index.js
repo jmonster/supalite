@@ -1,0 +1,12 @@
+import {createRequire}from'node:module';import y from'node:fs';import c from'node:path';import {Kysely}from'kysely';import {GenericSqliteDialect,buildQueryFn}from'kysely-generic-sqlite';import {SqliteConnection}from'@supabase/lite';try {
+   /**
+    * Adding this to avoid warnings from node:sqlite being experimental
+    */
+   const { emitWarning } = process;
+   process.emitWarning = (warning, ...args) => {
+      if (warning.includes("SQLite is an experimental feature")) return;
+      return emitWarning(warning, ...args);
+   };
+} catch {}
+var h=createRequire(import.meta.url),a=null;function C(t){if(!t||t===":memory:"||t==="file::memory:")return ":memory:";if(!t.startsWith("file:"))return t;let e=t.startsWith("file://")?t.slice(7):t.slice(5);return !e||e===":memory:"?":memory:":c.isAbsolute(e)?e:c.resolve(process.cwd(),e)}function g(){return a||(a=h("node:sqlite").DatabaseSync),a}function w(t,e){let o=n=>{try{return t.prepare(n)}catch(r){throw console.error(r),new Error(`Failed to prepare statement: ${n}`)}};return {db:t,query:buildQueryFn({all:(n,r=[])=>{let i=e(r);return o(n).all(...i)},run:(n,r=[])=>{let i=e(r),{changes:s,lastInsertRowid:m}=o(n).run(...i);return {insertId:Number.parseInt(m.toString(),10),numAffectedRows:Number.parseInt(s.toString(),10)}}}),close:()=>t.close(),iterator:(n,r,i=[])=>{if(!n)throw new Error("Only support select in stream()");let s=e(i);return o(r).iterate(...s)}}}var l=class extends SqliteConnection{kysely;driver;closed=false;constructor(e={}){super(e);let o=g(),n=C(e.url);if(n!==":memory:"){let i=c.dirname(n);y.existsSync(i)||y.mkdirSync(i,{recursive:true});}this.driver=new o(n);let r=new GenericSqliteDialect(()=>w(this.driver,i=>this.prepareBindParams(i)),i=>{this.driver.exec("pragma foreign_keys = on");});this.kysely=new Kysely({dialect:r,plugins:this.withSqlitePlugins()});}async exec(e,...o){let n=e.trimStart().toUpperCase(),r=this.prepareBindParams(o);if(n.startsWith("SELECT")||n.startsWith("WITH"))return {rows:this.driver.prepare(e).all(...r)};r.length>0?this.driver.prepare(e).run(...r):this.driver.exec(e);}async close(){if(!this.closed){this.closed=true;try{await this.exec("PRAGMA wal_checkpoint(FULL)");}catch{}this.driver.close();}}};function D(t={}){return new l(t)}
+export{D as createConnection};

@@ -1,0 +1,180 @@
+---
+title: "Row Level Security"
+description: "RLS works on every Supabase Lite backend; SQLite enforces it at the application layer with specific caveats."
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Row Level Security works the same way you'd expect from Supabase on every backend: default-deny when RLS is enabled with no matching policies, `USING`/`WITH CHECK` clauses, `PERMISSIVE`/`RESTRICTIVE` combination rules, per-command policy targeting (`FOR SELECT/INSERT/UPDATE/DELETE/ALL`), role targeting (`TO anon, authenticated, PUBLIC`), and the `auth.uid()`/`auth.jwt()` placeholders. If you already know Postgres RLS, none of that behavior needs re-explaining here: see the [Supabase RLS guide](https://supabase.com/docs/guides/database/postgres/row-level-security) for the concepts.
+
+What differs is *how* it's enforced, and a handful of SQLite-specific gaps.
+
+## Enforcement model
+
+- **SQLite:** policies are extracted from the Postgres DDL during translation and enforced at the application layer by rewriting the PostgREST AST before query execution. `USING` conditions merge into the query's `WHERE` clause; `WITH CHECK` conditions are evaluated in-memory against the proposed INSERT/UPDATE values.
+- **PGlite / Postgres:** native Postgres RLS. Each request runs inside a transaction with `SET LOCAL role` and `set_config('request.jwt.claim.sub', ...)`, so the database enforces policies directly, identical to hosted Supabase.
+
+`auth.role()` resolves from the JWT `role` claim (defaulting to `"anon"` if missing, matching PostgREST). `auth.uid()` resolves to the JWT `sub` claim. `auth.jwt()` exposes the full payload; a missing JWT or claim makes `auth.jwt() ->> 'x'` NULL, so the policy does not match, same as Postgres. These placeholders are supported in policy expressions on both dialects.
+
+On `sqlite-postgres`, runtime metadata is persisted to the disposable cache file `supabase/.temp/.runtime-metadata-cache.json`. `lite start` accepts only migration-derived entries and trusts only the ordered SQL recorded in `supabase_migrations.schema_migrations`; migration files and `schemas/*.sql` are never startup inputs. Missing, corrupt, old, stale, or tampered caches rebuild automatically from applied history, including the complete RLS table/policy lifecycle. A rename carries RLS and policies to the new table name; dropping a table removes them, even if a table with the same name is created later.
+
+Rebuilds also replay the physical migrations in memory and compare their raw SQLite structure with the live database. Invalid/null recorded statements or out-of-band structural changes stop startup with a `lite db reset` hint. Introspection only proves equality and never generates policies. `lite dev` and the Vite plugin instead recompute metadata from the declarative schema they apply; use exactly one backend process per project, and capture declarative changes in migrations before switching to `lite start`.
+
+<Aside type="caution">
+While [admin mode](/running#admin-mode) is on (the default for loopback `lite dev`, `lite start`, and Vite dev listeners), requests that carry no credential at all run as `service_role` and skip RLS entirely. To exercise your policies, send an `apikey`:
+
+```bash
+# anon
+curl -H "apikey: $PUBLISHABLE_KEY" 127.0.0.1:54321/rest/v1/notes
+# authenticated — the apikey is required IN ADDITION to the user JWT
+curl -H "apikey: $PUBLISHABLE_KEY" -H "Authorization: Bearer $USER_JWT" \
+  127.0.0.1:54321/rest/v1/notes
+```
+
+Neither request is ever elevated, so both behave exactly as they will in production. A bearer token alone (no `apikey`) is rejected with 401 before RLS is reached — opaque keys are only sourced from `apikey`, matching upstream. Or start with `--no-admin`.
+</Aside>
+
+<Aside>
+Every RLS behavior listed as supported here is regression-tested against both SQLite and PGlite in the package's test suite, so a silent SQLite-only bypass would fail CI rather than ship quietly.
+</Aside>
+
+## Cross-table membership policies
+
+`SELECT` policies can use nested `SELECT` and `EXISTS` queries for membership checks. On SQLite, every relation follows PostgreSQL lookup rules independently: an explicit schema is preserved, while an unqualified relation uses `public`. `AS` and implicit aliases are preserved too, including distinct aliases for the same table at different nesting levels. A policy on `storage.objects` therefore does not make an unqualified child relation part of the `storage` schema.
+
+```sql
+create policy "workspace members can read documents"
+on public.documents for select to authenticated
+using (
+  exists (
+    select 1
+    from public.workspace_members
+    where workspace_members.workspace_id = documents.workspace_id
+      and workspace_members.user_id = auth.uid()
+  )
+);
+```
+
+Prefer explicit schema names in cross-schema policies. Normal PostgreSQL table privileges still apply on PGlite and PostgreSQL. The SQLite-only restriction on subqueries in an `INSERT` or `UPDATE` `WITH CHECK` expression remains unchanged.
+
+## SQLite-specific caveats
+
+<Aside type="caution">
+These four apply to the SQLite path only. None of them apply on PGlite/Postgres: RLS there is native Postgres RLS with no emulation gaps.
+</Aside>
+
+### No `DEFAULT auth.uid()` on columns
+
+SQLite can't evaluate `auth.uid()` as a column default (it's a JWT-bound function, not a SQLite builtin). Drop the default, pass `user_id` from the client on insert, and let `WITH CHECK` enforce ownership server-side:
+
+```sql
+-- Instead of:
+user_id uuid not null default auth.uid() references auth.users (id),
+
+-- Use:
+user_id uuid not null references auth.users (id),
+-- and rely on a WITH CHECK policy to bind the row to the caller.
+```
+
+```ts
+const { data: { session } } = await supabase.auth.getSession();
+await supabase.from("<thing>").insert({
+  user_id: session.user.id,
+  // ...
+});
+```
+
+### Subquery `WITH CHECK` on `INSERT` throws
+
+`WITH CHECK` expressions containing subqueries (`user_id IN (SELECT ...)`, `EXISTS (...)`) can't be evaluated in-memory, so SQLite throws rather than silently passing or failing. This is the classic "child belongs to a parent owned by the caller" pattern:
+
+```sql
+-- Fails on SQLite (subquery in WITH CHECK):
+create policy milestones_insert_own on public.milestones
+  for insert to authenticated
+  with check (
+    exists (
+      select 1 from public.goals
+      where goals.id = milestones.goal_id
+        and goals.user_id = auth.uid()
+    )
+  );
+```
+
+**Workaround:** denormalize the authorizing column onto the child table and compare directly:
+
+```sql
+create policy milestones_insert_own on public.milestones
+  for insert to authenticated
+  with check (auth.uid() = user_id);
+```
+
+This also matches [Supabase's own performance recommendation](https://supabase.com/docs/guides/database/postgres/row-level-security#tips): subquery policies execute per row even on real Postgres.
+
+### `UPSERT` applies `INSERT` policies only
+
+Postgres applies `UPDATE` policies on conflict resolution during an upsert. Supabase Lite applies the `INSERT WITH CHECK` policy to all upsert rows regardless of outcome, because conflict resolution is unknown at the point the policy has to be evaluated.
+
+### `FORCE ROW LEVEL SECURITY` is accepted and ignored
+
+`ALTER TABLE ... FORCE ROW LEVEL SECURITY` (and `NO FORCE`) is parsed and then ignored. On Postgres it only controls whether the table owner is subject to the table's policies; Supabase Lite has no table-owner exemption to begin with, so there is nothing to toggle. As on Postgres, `FORCE` alone does not enable RLS: only `ENABLE ROW LEVEL SECURITY` does, and only `DISABLE ROW LEVEL SECURITY` turns it back off. Policies may exist while RLS is disabled or has never been enabled; they remain stored but inert until RLS is enabled.
+
+### `RETURNING` isn't checked against the `SELECT` policy
+
+Postgres errors if a `RETURNING` clause would expose a row not visible under the table's `SELECT` policy. Supabase Lite doesn't check this on SQLite; `RETURNING` returns whatever the mutation touched.
+
+## `DROP POLICY` / `ALTER POLICY`
+
+Standalone `DROP POLICY [IF EXISTS]` and `ALTER POLICY` are handled during RLS collection rather than emitted as SQLite DDL, so they work on the SQLite path too, in both imperative migrations and declarative schemas:
+
+- `DROP POLICY [IF EXISTS] <name> ON <table>` (schema-qualified names included) removes the policy from the collected RLS registry.
+- `ALTER POLICY` updates the `TO` / `USING` / `WITH CHECK` clauses. The command type (`SELECT`/`INSERT`/…) and the `PERMISSIVE`/`RESTRICTIVE` flag can't be changed by `ALTER POLICY`, matching Postgres.
+- `ALTER POLICY ... RENAME TO <new_name>` renames the policy in place.
+
+```sql
+alter policy "select own" on todos using (auth.uid() = user_id and archived = false);
+alter policy "select own" on todos rename to "select own todos";
+drop policy if exists "select own todos" on todos;
+```
+
+Both statements replay in order alongside every other RLS-affecting statement collected from your migrations and `schemas/*.sql`, so editing or removing a `CREATE POLICY` directly in a declarative schema file still works exactly as before. Dropping or altering a policy that doesn't exist errors, same as Postgres. On PGlite/Postgres these statements run natively and always have.
+
+## Per-user multi-tenant recipe
+
+The most common shape, "each user sees only their own rows," works identically on SQLite, PGlite, and Postgres:
+
+```sql
+create table <thing> (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  -- domain columns
+  created_at timestamptz not null default now()
+);
+
+alter table <thing> enable row level security;
+
+create policy "select own" on <thing> for select to authenticated using (auth.uid() = user_id);
+create policy "insert own" on <thing> for insert to authenticated with check (auth.uid() = user_id);
+create policy "update own" on <thing> for update to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "delete own" on <thing> for delete to authenticated using (auth.uid() = user_id);
+```
+
+The client supplies `user_id` on insert since SQLite has no `DEFAULT auth.uid()`:
+
+```ts
+const { data: { session } } = await supabase.auth.getSession();
+await supabase.from("<thing>").insert({
+  user_id: session.user.id,
+  // ...
+});
+```
+
+## PGlite / Postgres auto-setup
+
+When any table has `ENABLE ROW LEVEL SECURITY`, Supabase Lite automatically creates the `anon`, `authenticated`, and `service_role` roles if they're missing (`service_role` gets `BYPASSRLS`) and grants default privileges on all tables and sequences in the relevant schemas. No manual `CREATE ROLE` or `GRANT` statements needed.
+
+## See also
+
+- [Backends](/database/backends): switching drivers moves you from application-layer RLS emulation to native Postgres RLS.
+- [Postgres → SQLite translation](/database/postgres-sqlite-translation): how `CREATE POLICY` and `ENABLE ROW LEVEL SECURITY` DDL gets parsed and extracted.
+- [Supabase RLS guide](https://supabase.com/docs/guides/database/postgres/row-level-security): the base concepts this page assumes.

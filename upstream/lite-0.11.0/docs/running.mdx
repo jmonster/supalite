@@ -1,0 +1,127 @@
+---
+title: "Running Supabase Lite"
+description: "Choose between the Vite plugin, lite dev, lite start, and embedded/programmatic usage."
+---
+
+How you run Supabase Lite is a Supabase Lite-specific concept with no direct Supabase equivalent: since there's no Docker stack, "running Supabase locally" (see the [Supabase local development guide](https://supabase.com/docs/guides/local-development)) becomes a choice between running an in-process plugin, a small CLI server, or embedding the app directly in your own runtime.
+
+## Options at a glance
+
+| Mode | Process model | Schema reload | Best for |
+|---|---|---|---|
+| [Vite plugin](/integrations/vite) | In-process, mounted on the Vite dev server | Watches `schemas/*.sql` in `vite`/`vite dev`; not in `vite preview` or `vite build` | Any Vite frontend (React/Vue/Svelte/…). Recommended default if you're on Vite. |
+| `lite dev` | Separate process | Watches `schemas/*.sql`, auto-applies on change | Non-Vite apps during active development |
+| `lite start` | Separate process | None: no watch, no auto-migrate | CI, staging, or anything that should behave like production |
+| [Embedded / programmatic](/integrations/embedded) | In-process, inside your own Bun/Node/edge runtime | Manual: you call `createMigrator(...).migrate()` yourself | Custom servers, edge functions, or when you need full control over boot sequence |
+
+## Vite plugin
+
+If your frontend uses Vite, this is the recommended path: skip the separate CLI process entirely. The `@supabase/lite/vite` plugin mounts `/auth/v1`, `/rest/v1`, and `/_system` directly on the Vite dev server, so one process serves both your app and the API.
+
+```ts
+// vite.config.ts
+import { defineConfig } from "vite";
+import { supalite } from "@supabase/lite/vite";
+
+export default defineConfig({
+  plugins: [supalite()],
+});
+```
+
+Active in `vite` / `vite dev` (watches schemas, hot-reloads) and `vite preview` (mounts the API and runs boot migrations, but does not watch schemas, it simulates production). `vite build` and any standalone production server do not mount the API; use `lite start`, hosted Supabase, or an equivalent there.
+
+Full setup and env-var injection details: [Vite integration](/integrations/vite).
+
+## `lite dev`
+
+```bash
+lite dev
+```
+
+Starts the API server as its own process and watches `supabase/schemas/*.sql`, re-applying the schema automatically on every change. Use this for non-Vite apps (plain Node/Bun backends, mobile clients hitting a local API, etc.) during active development.
+
+Both CLI servers bind `127.0.0.1` by default. The host flag matches Vite: `--host` listens on `0.0.0.0`, while `--host <address>` selects a specific interface.
+
+```bash
+lite dev --host --no-admin   # reachable from containers/LAN; normal auth only
+```
+
+By default, auth emails (signup confirmation, magic link, password recovery, and so on) are printed to this server console rather than actually sent. See [Email delivery & templates](/auth/email).
+
+```bash
+lite db reset --hard   # delete the DB file, replay migrations + seed
+```
+
+## `lite start`
+
+```bash
+lite start
+```
+
+Starts the API server with no file watching and no auto-migration. This is the closest Supabase Lite gets to a production-like posture: you control exactly when migrations run (`lite migration up`, `lite db reset`), and the server won't silently reapply schema changes. Use this for CI pipelines and any environment meant to behave like production.
+
+On the `sqlite-postgres` driver, the ordered SQL in `supabase_migrations.schema_migrations` is the sole startup authority. `lite start` hashes the recorded `{version, statements}` values, restores a matching migration-derived `supabase/.temp/.runtime-metadata-cache.json`, or fully rebuilds fields, enums, constraints, comments, variables, relationships, RLS tables, and policies from that history. It never reads migration files or `supabase/schemas/*.sql`, so pending files and edits or deletions of already-applied files have no effect.
+
+The runtime metadata cache is disposable. Missing, corrupt, old, stale, or tampered files rebuild automatically. During a rebuild, Supabase Lite also replays the recorded SQL into an in-memory SQLite database and compares that raw structure with the live database. Invalid history or out-of-band structural DDL makes `lite start` exit with a `lite db reset` hint; live introspection is never used as a metadata source.
+
+`lite dev` and the Vite plugin remain declarative workflows: they apply pending migrations, reconcile the current `schemas/*.sql`, and replace runtime metadata from the schema they actually applied. `lite start` ignores that declarative state. If declarative changes made the live structure differ from applied migration history, generate a migration with `lite db diff -f <name>` and use `lite db reset` to establish a clean migration-derived database before running `lite start`.
+
+## Admin mode
+
+Loopback `lite dev`, `lite start`, and Vite dev listeners run with **admin mode on**. A request that arrives with no credential at all (no `apikey` header or query parameter, no `Authorization` header) is served as `service_role`, so a local admin UI like the built-in studio can read and edit any table without a secret key ever reaching the browser. This mirrors self-hosted Supabase Studio, where the Next.js server holds the service key and does the privileged work on the client's behalf.
+
+Elevation is deliberately narrow. A request is only elevated when all of these hold:
+
+- the path is under `/rest/v1` or `/storage/v1` (`/auth/v1` is never elevated). The Vite plugin does not mount `/storage/v1` by default, so there it's `/rest/v1` only
+- it carries no `apikey` and no `Authorization`
+- it is same-origin, or has no `Origin` header at all (so `curl` works, but another website open in your browser does not)
+- it arrived from a loopback socket **and** names a loopback host. Both are required: the peer address stops a machine on your network spoofing `Host: localhost`, and the hostname stops DNS rebinding, where a hostile page re-resolves its own domain to `127.0.0.1` so the socket really is loopback while `Host` and `Origin` stay theirs
+
+Anything else falls through to normal [API key enforcement](/auth/overview#api-keys).
+
+```bash
+lite start --no-admin          # loopback, admin explicitly off
+lite start --host              # all interfaces, admin defaults off and warns
+lite start --host --no-admin   # all interfaces, explicit/silent opt-out
+lite start --host --admin      # all interfaces, local peers retain admin
+```
+
+Two things to know:
+
+1. **Keyless traffic does not go through RLS while admin mode is on.** To exercise your policies, send an `apikey` — the publishable key for `anon`, or the publishable key **plus** `Authorization: Bearer <user JWT>` for `authenticated`. Those requests are never elevated, so both roles behave exactly as they do in production. That is the whole reason elevation is credential-aware rather than blanket. A bearer token on its own is not enough: with keys configured, a request without an `apikey` is rejected before RLS is reached (401 `UNAUTHORIZED_MISSING_API_KEY`), matching upstream.
+2. **Exposing a server changes the default.** A non-loopback `--host` disables admin mode unless `--admin` is explicit. With neither admin flag, Lite warns that exposure disabled admin and shows both choices. Vite applies the same rule when its resolved host is non-loopback.
+3. **A public tunnel erases locality.** A sandbox or tunnel can publish a loopback listener and forward traffic over a local socket. Run with `--no-admin` whenever another system exposes the port; socket locality cannot authenticate the original remote user through a proxy.
+
+On a loopback CLI listener, precedence is explicit `--admin`/`--no-admin`, then `options.server.admin`, then the on-by-default launcher value. A non-loopback `--host` forces admin off unless `--admin` is present, so config cannot silently re-enable it. For Vite, an exposed host similarly requires the explicit `supalite({ admin: true })` option.
+
+Embedding `App` without request context applies only the hostname check. An adapter that owns a listener should call `app.fetch(request, { peerAddress })`; a null peer fails closed. Only enable admin on a loopback-bound server.
+
+With admin mode off, the bundled studio connects with the publishable key instead and shows you what `anon` can see under RLS, with a banner saying so — it stays usable, just scoped.
+
+## Embedded / programmatic
+
+For full control, skip the CLI entirely and embed the app directly in your own Bun, Node, browser, or edge runtime:
+
+```typescript
+import { App } from "@supabase/lite";
+import { createConnection } from "@supabase/lite/sqlite";
+
+const connection = await createConnection({ url: "file:./data.db" });
+const app = new App({ connection, auth: { enabled: true } });
+
+const schema = await Bun.file("./schema.sql").text();
+await app.connection.createMigrator(schema).migrate();
+
+export default app; // app.fetch handles requests
+```
+
+This is the path for custom server frameworks, Cloudflare Workers/Durable Objects, or any setup where you need to control the boot sequence yourself rather than delegating to the CLI or the Vite plugin. See [Embedded / programmatic](/integrations/embedded) for supported runtimes and drivers.
+
+## Choosing
+
+- Building a Vite app? Use the [Vite plugin](/integrations/vite). Stop here.
+- Building anything else, and want schema changes to apply automatically while you iterate? Use `lite dev`.
+- Deploying, running in CI, or want explicit control over migrations? Use `lite start`.
+- Building your own server, or targeting a runtime the CLI doesn't drive directly (Workers, Durable Objects)? Use the [embedded API](/integrations/embedded).
+
+Whichever mode you pick, run exactly one backend per project. Never run `lite dev` and `lite start` together, or either alongside the Vite plugin. Two backends over the same SQLite file race migrations and schema watchers even when they do not share a port.

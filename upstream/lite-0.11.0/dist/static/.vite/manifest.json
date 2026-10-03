@@ -1,0 +1,43 @@
+{
+  "../packages/studio/upstream/apps/studio/fonts/inter/InterVariable-Italic.woff2": {
+    "file": "assets/InterVariable-Italic-DpCbqKDY.woff2",
+    "src": "../packages/studio/upstream/apps/studio/fonts/inter/InterVariable-Italic.woff2"
+  },
+  "../packages/studio/upstream/apps/studio/fonts/inter/InterVariable.woff2": {
+    "file": "assets/InterVariable-Dx4kXJAl.woff2",
+    "src": "../packages/studio/upstream/apps/studio/fonts/inter/InterVariable.woff2"
+  },
+  "../packages/studio/upstream/apps/studio/fonts/manrope/manrope-latin-ext-wght-normal.woff2": {
+    "file": "assets/manrope-latin-ext-wght-normal-Ch3YOpNY.woff2",
+    "src": "../packages/studio/upstream/apps/studio/fonts/manrope/manrope-latin-ext-wght-normal.woff2"
+  },
+  "../packages/studio/upstream/apps/studio/fonts/manrope/manrope-latin-wght-normal.woff2": {
+    "file": "assets/manrope-latin-wght-normal-DHIcAJRg.woff2",
+    "src": "../packages/studio/upstream/apps/studio/fonts/manrope/manrope-latin-wght-normal.woff2"
+  },
+  "../packages/studio/upstream/apps/studio/fonts/source-code-pro/SourceCodePro-Variable-Italic.woff2": {
+    "file": "assets/SourceCodePro-Variable-Italic-eALmlzX7.woff2",
+    "src": "../packages/studio/upstream/apps/studio/fonts/source-code-pro/SourceCodePro-Variable-Italic.woff2"
+  },
+  "../packages/studio/upstream/apps/studio/fonts/source-code-pro/SourceCodePro-Variable.woff2": {
+    "file": "assets/SourceCodePro-Variable-BP8Zz55n.woff2",
+    "src": "../packages/studio/upstream/apps/studio/fonts/source-code-pro/SourceCodePro-Variable.woff2"
+  },
+  "dev/vite/main.tsx": {
+    "file": "assets/main-BgJs27xp.js",
+    "name": "main",
+    "src": "dev/vite/main.tsx",
+    "isEntry": true,
+    "css": [
+      "assets/main-BY4iigay.css"
+    ],
+    "assets": [
+      "assets/InterVariable-Dx4kXJAl.woff2",
+      "assets/InterVariable-Italic-DpCbqKDY.woff2",
+      "assets/manrope-latin-wght-normal-DHIcAJRg.woff2",
+      "assets/manrope-latin-ext-wght-normal-Ch3YOpNY.woff2",
+      "assets/SourceCodePro-Variable-BP8Zz55n.woff2",
+      "assets/SourceCodePro-Variable-Italic-eALmlzX7.woff2"
+    ]
+  }
+}

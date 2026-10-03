@@ -1,95 +1,112 @@
+import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { cp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, cp, lstat, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const source = resolve(root, "node_modules/@supabase/lite");
-export const baseline = {
+const manifest = JSON.parse(
+  await readFile(resolve(root, "upstream/manifest.json"), "utf8"),
+);
+export const baseline = Object.freeze({
   name: "@supabase/lite",
   version: "0.11.0",
   integrity:
     "sha512-F7Z/um+cAedEECNhVffMM04Rl25pmJUiJp3jqW4tKmij2A+Us24r3CyIRjeuhW+fNnTvJQVIshNn6tDb3oB52g==",
+  tarballSha256:
+    "f8b399ab700ed0ae34a44a38112c86be0fe33cf3e671473799048afa0d496adf",
   indexSha256:
     "f5cf75c6bcb10cec0c175cd4a8237b831368f7dbfc77e12652b965dde6a5685d",
-};
-const pkg = JSON.parse(await readFile(resolve(source, "package.json"), "utf8"));
-const lock = JSON.parse(
-  await readFile(resolve(root, "package-lock.json"), "utf8"),
-);
-const input = await readFile(resolve(source, "dist/index.js"), "utf8");
-const checksum = createHash("sha256").update(input).digest("hex");
-if (
-  pkg.name !== baseline.name ||
-  pkg.version !== baseline.version ||
-  checksum !== baseline.indexSha256 ||
-  lock.packages["node_modules/@supabase/lite"]?.integrity !== baseline.integrity
-) {
-  throw new Error(
-    "Unsupported baseline: expected the exact published @supabase/lite 0.11.0 artifact. Refusing to patch.",
+});
+const tarballUrl =
+  "https://registry.npmjs.org/@supabase/lite/-/lite-0.11.0.tgz";
+const source = resolve(root, "upstream/lite-0.11.0");
+const installed = resolve(root, "node_modules/@supabase/lite");
+const target = resolve(root, ".generated/baseline/node_modules/@supabase/lite");
+
+assert.equal(manifest.name, baseline.name, "Unexpected manifest package");
+assert.equal(manifest.version, baseline.version, "Unexpected manifest version");
+assert.equal(manifest.directory, "lite-0.11.0", "Unexpected manifest directory");
+assert.equal(manifest.tarball.url, tarballUrl, "Unexpected tarball URL");
+assert.equal(manifest.tarball.integrity, baseline.integrity, "Unexpected npm integrity");
+assert.equal(manifest.tarball.sha256, baseline.tarballSha256, "Unexpected tarball SHA-256");
+assert.equal(manifest.files.length, 77, "Expected all 77 published files");
+const paths = manifest.files.map((file) => file.path);
+assert.equal(new Set(paths).size, paths.length, "Duplicate manifest path");
+for (const file of manifest.files) {
+  assert.match(file.path, /^(?!\/)(?!.*\\)[^\0]+$/, "Invalid manifest path");
+  assert.ok(
+    file.path.split("/").every((part) => part && part !== "." && part !== ".."),
+    `Invalid manifest path: ${file.path}`,
   );
+  assert.match(file.sha256, /^[a-f0-9]{64}$/, `Invalid SHA-256: ${file.path}`);
+  assert.ok(Number.isSafeInteger(file.size) && file.size >= 0, `Invalid size: ${file.path}`);
+  assert.match(file.mode, /^0[0-7]{3}$/, `Invalid mode: ${file.path}`);
+}
+assert.equal(
+  manifest.files.find((file) => file.path === "dist/index.js")?.sha256,
+  baseline.indexSha256,
+  "Unexpected baseline bundle SHA-256",
+);
+
+async function filePaths(directory, prefix = "") {
+  const results = [];
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) {
+      results.push(...await filePaths(resolve(directory, entry.name), relative));
+    } else {
+      assert.ok(entry.isFile(), `Expected a regular file: ${relative}`);
+      results.push(relative);
+    }
+  }
+  return results.sort();
 }
 
-// Surgical seams: retain raw containment literals; dispatch positive/NOT
-// predicates; preserve repeated filters and existing AND groups. All untouched bytes remain original.
-const patches = [
-  [
-    "return tm(t,{...r,dialect:e,db:s.db??r.db,introspection:s.introspection,schema:s.schema,requestSchema:s.requestSchema})}",
-    "return __jsonbCheck(tm(t,{...r,dialect:e,db:s.db??r.db,introspection:s.introspection,schema:s.schema,requestSchema:s.requestSchema}),e)}",
-  ],
-  ["n[r]?Object.assign(n[r],i):n[r]=i;", "__jsonbMerge(n,r,i);"],
-  [
-    "n[`$${t}`]=i;return",
-    'n[`$${t}`]=t==="and"&&Object.hasOwn(n,"$and")&&Array.isArray(n.$and)?[...n.$and,...i]:i;return',
-  ],
-  [
-    "return n?{$not:{[a]:u}}:{[a]:u}",
-    "return n?{$not:__jsonbMark({[a]:u},a,i)}:__jsonbMark({[a]:u},a,i)",
-  ],
-  [
-    "for(let[l,c]of Object.entries(o)){if(xt(c))",
-    "for(let[l,c]of Object.entries(o)){let __j=__jsonbTry(s,l,c,n,o,{parsePath:_n,reference:fe});if(__j){r.push(__j);continue}if(xt(c))",
-  ],
-  [
-    "for(let[f,d]of Object.entries(u))if(a)",
-    "for(let[f,d]of Object.entries(u))if(__jsonbTry(s,f,d,n,u,{parsePath:_n,reference:fe})){r.push(t.not(__jsonbTry(s,f,d,n,u,{parsePath:_n,reference:fe})))}else if(a)",
-  ],
-];
-let output = input;
-for (const [from, to] of patches) {
-  if (output.split(from).length !== 2)
-    throw new Error(`Expected exactly one integration seam: ${from}`);
-  output = output.replace(from, () => to);
-}
-const adapterUrl = pathToFileURL(resolve(root, "dist/lite-adapter.js")).href;
-const mergerUrl = pathToFileURL(resolve(root, "dist/merge-filters.js")).href;
-output = `// Modified by supalite-jsonb-parity: SQLite JSONB containment integration.\nimport {markJsonbLiteral as __jsonbMark,tryJsonbContainment as __jsonbTryImpl,assertJsonbQueryLimits as __jsonbQueryLimits} from ${JSON.stringify(adapterUrl)};\nimport {mergeFilter as __jsonbMerge} from ${JSON.stringify(mergerUrl)};\nfunction __jsonbError(error){if(error?.code==="54000")throw new Ie({httpStatus:400,code:error.code,message:error.message,details:null,hint:"Reduce the JSONB filter size or depth."});throw error}\nfunction __jsonbTry(...args){try{return __jsonbTryImpl(...args)}catch(error){__jsonbError(error)}}\nfunction __jsonbCheck(query,dialect){if(dialect==="sqlite"){try{__jsonbQueryLimits(query.compile())}catch(error){__jsonbError(error)}}return query}\n${output}`;
-for (const flavor of ["baseline", "patched"]) {
-  const target = resolve(
-    root,
-    ".generated",
-    flavor,
-    "node_modules/@supabase/lite",
+export async function verifyDistribution(directory) {
+  assert.deepEqual(
+    await filePaths(directory),
+    [...paths].sort(),
+    `Published file inventory differs: ${directory}`,
   );
-  await mkdir(dirname(target), { recursive: true });
-  await cp(source, target, { recursive: true });
-  if (flavor === "patched")
-    await writeFile(resolve(target, "dist/index.js"), output);
+  for (const file of manifest.files) {
+    const path = resolve(directory, file.path);
+    const [bytes, stat] = await Promise.all([readFile(path), lstat(path)]);
+    assert.equal(bytes.length, file.size, `File size differs: ${path}`);
+    assert.equal(
+      createHash("sha256").update(bytes).digest("hex"),
+      file.sha256,
+      `SHA-256 differs: ${path}`,
+    );
+    if (process.platform !== "win32") {
+      assert.equal(stat.mode & 0o777, Number.parseInt(file.mode, 8), `Mode differs: ${path}`);
+    }
+  }
+  const pkg = JSON.parse(await readFile(resolve(directory, "package.json"), "utf8"));
+  assert.equal(pkg.name, baseline.name, "Unexpected package name");
+  assert.equal(pkg.version, baseline.version, "Unexpected package version");
 }
+
+const lock = JSON.parse(await readFile(resolve(root, "package-lock.json"), "utf8"));
+const rootPackage = JSON.parse(await readFile(resolve(root, "package.json"), "utf8"));
+const lockedPackage = lock.packages?.["node_modules/@supabase/lite"];
+assert.equal(rootPackage.devDependencies?.[baseline.name], baseline.version, "Baseline dependency must be pinned");
+assert.equal(lock.packages?.[""]?.devDependencies?.[baseline.name], baseline.version, "Lockfile baseline must be pinned");
+assert.equal(lockedPackage?.version, baseline.version, "Unexpected locked package version");
+assert.equal(lockedPackage?.integrity, baseline.integrity, "Unexpected lockfile integrity");
+assert.equal(lockedPackage?.resolved, tarballUrl, "Unexpected lockfile package URL");
+await verifyDistribution(source);
+await verifyDistribution(installed);
+
+await mkdir(dirname(target), { recursive: true });
+await rm(target, { recursive: true, force: true });
+await cp(source, target, { recursive: true });
+for (const file of manifest.files) {
+  await chmod(resolve(target, file.path), Number.parseInt(file.mode, 8));
+}
+await verifyDistribution(target);
 await writeFile(
   resolve(root, ".generated/provenance.json"),
-  JSON.stringify(
-    {
-      ...baseline,
-      description:
-        "Integration with the published @supabase/lite 0.11.0 npm distribution.",
-      patchedIndexSha256: createHash("sha256").update(output).digest("hex"),
-      patches: patches.length,
-    },
-    null,
-    2,
-  ) + "\n",
+  JSON.stringify({ ...baseline, source: "upstream/lite-0.11.0", files: paths.length }, null, 2) + "\n",
 );
-console.log(
-  `Prepared exact baseline and patched copy (${patches.length} checked planner seams)`,
-);
+console.log(`Verified and prepared ${baseline.name} ${baseline.version} (${paths.length} unmodified files)`);

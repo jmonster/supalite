@@ -1,0 +1,80 @@
+---
+title: "Data API divergences"
+description: "Where the PostgREST-compatible Data API and supabase-js diverge on SQLite, and the workarounds."
+---
+import { Aside } from '@astrojs/starlight/components';
+
+Supabase Lite's Data API mirrors PostgREST closely enough that `@supabase/supabase-js` works unchanged for supported methods. This page lists what's unsupported, partial, and fully working, specifically on the SQLite path. Everything here works fully on PGlite and Postgres; see [Backends](/database/backends) to switch.
+
+For the base concepts (query builder chaining, the REST API shape, response formats), see the [Data API guide](https://supabase.com/docs/guides/api) and the [supabase-js reference](https://supabase.com/docs/reference/javascript/select).
+
+## Not supported on SQLite
+
+<Aside type="caution">
+These throw, no-op, or silently return wrong results on SQLite. Switch to `pglite` or `postgres` in `supabase/config.toml` to use them as-is, or apply the workaround below.
+</Aside>
+
+### `rpc()`
+
+Postgres RPC depends on stored procedures (`CREATE FUNCTION ... LANGUAGE sql/plpgsql`). SQLite has no stored-procedure model. Supabase Lite doesn't introduce a parallel JS-function registry to fake it.
+
+**Workaround**, in order of preference:
+1. Express the logic as a SQL view or trigger in `schemas/schema.sql`.
+2. Switch the driver to `pglite` or `postgres`: `rpc()` works there natively.
+3. Run a regular server endpoint (Hono, Express, a Next.js route handler, or Vite middleware) and call it directly from the client.
+
+### Range operators
+
+`rangeGt`, `rangeGte`, `rangeLt`, `rangeLte`, `rangeAdjacent`: SQLite has no range types, so there's nothing to compile these to. No workaround short of modeling the range as two columns and writing the comparison manually, or switching backends.
+
+### Quantified comparison operators
+
+`eq(any)` / `eq(all)`, `neq(any)` / `neq(all)`, and the `gt`/`gte`/`lt`/`lte` equivalents. Postgres compiles `col=eq(any).{1,2,3}` to `col = ANY(ARRAY[...])`; SQLite has no array type and no quantified form on scalars. Not implemented: use `.in()` for the `eq(any)` case, or switch backends for the general form.
+
+## Partial on SQLite
+
+### `schema()`
+
+Real Postgres multi-schema isn't available on SQLite, but it's not a flat no. On the `sqlite-postgres` driver, a table in a non-public schema is stored as one dotted identifier (`private.secrets` becomes `"private.secrets"`), and the Data API still records which schema each table came from. Schemas listed in `api.schemas` are served through `Accept-Profile` (reads, `schema()` in supabase-js) and `Content-Profile` (writes). A schema that is not listed returns 406 `PGRST106`, as in PostgREST.
+
+Limits: there's no namespace isolation, an embed across two schemas returns `PGRST205`, and the bare `sqlite` driver has no schema handling at all. See [Schemas](/database/schemas).
+
+
+### `contains()` / `containedBy()` / `overlaps()`
+
+Scalar arrays and shallow objects with scalar values work (`tags=cs.{a,b}`, `meta=cs.{"theme":"dark"}`), matched via `json_each`/`json_extract`. What doesn't work: arrays of objects (`[{a:1}] @> [{a:1}]`) and nested objects in the filter value (`data=cs.{"user":{"id":1}}`), because `json_extract` returns the sub-value as JSON text, which doesn't compare equal to the JS-object bind. `cd`/`ov` also currently require array inputs.
+
+### `textSearch()` (all variants: `fts`, `plfts`, `phfts`, `wfts`)
+
+SQLite has no FTS5-backed tsvector equivalent wired up here. What runs instead is a LIKE-based lexeme approximation: the query is split into terms and matched with `LIKE`, not real ranking or stemming. Phrase (`plfts`) and websearch (`wfts`) variants are parsed into the same lexeme approximation. Language/dictionary variants and computed-column FTS are limited. Good enough for basic "contains these words" search; not a substitute for Postgres full-text search.
+
+### `regexMatch()` / `regexIMatch()`
+
+Only simple anchored or literal patterns translate: `^foo`, `bar$`, `^exact$`, plain substrings. These become SQLite `GLOB` (case-sensitive) or `LIKE` (case-insensitive). Character classes, quantifiers, and alternation are not supported: the pattern either matches the simple-case translator or it doesn't get evaluated correctly.
+
+### `explain()`
+
+Returns the compiled SQL via `application/vnd.pgrst.plan` on both SQLite and Postgres, but real query-plan output (row estimates, actual timing) isn't surfaced on either dialect yet.
+
+## Fully works (all backends)
+
+- All CRUD: `from`, `select`, `insert`, `update`, `delete`, `upsert`, with `RETURNING`.
+- All comparison filters: `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`, `notIn`, `is`, `isDistinct`.
+- All pattern-matching filters: `like`, `ilike`, `likeAllOf`, `likeAnyOf`, `ilikeAllOf`, `ilikeAnyOf`.
+- Advanced filters: `match`, `or`, `not`, `filter`.
+- Transforms: `order`, `limit`, `range`, `single`, `maybeSingle`.
+- Resource embedding: foreign-key joins (auto-resolved from introspection), `!inner`, spreads (`...`), nested multi-level embeds, and aggregates (`count`, `sum`, `avg`, `min`, `max`).
+- Embedded dotted-path filters (`.eq('rel.col', value)`): applied inside the embedded subquery. As in PostgREST, the filter narrows the embedded array; add `!inner` to also drop parent rows with no match.
+- Response/utility methods: `csv()`, `abortSignal()`, `setHeader()`, `throwOnError()`, `maxAffected()`.
+
+`geojson()` is not implemented on either backend (requires SpatiaLite or PostGIS, not wired up). `rollback()` is not implemented on either backend. A `Prefer: tx=rollback` request gets `tx=rollback` echoed in `Preference-Applied`, but the write still commits, so don't use it for test cleanup. Supabase runs PostgREST with `PGRST_DB_TX_END=commit` by default, which ignores the preference too. `returns()` and `overrideTypes()` are TypeScript-only and need no backend support.
+
+<Aside type="note">
+Custom media handlers, computed columns backed by PG function metadata, and `SET LOCAL role` / JWT-driven role switching are known gaps that show up in the upstream PostgREST spec suite rather than the `supabase-js` surface. See the skip breakdown in the package's `STATUS.md`.
+</Aside>
+
+## See also
+
+- [Backends](/database/backends): how to switch driver to get full parity for anything listed above.
+- [Row Level Security](/database/rls): filter-adjacent, but its own set of SQLite caveats.
+- [Compatibility](/compatibility): capability rollup across all services.

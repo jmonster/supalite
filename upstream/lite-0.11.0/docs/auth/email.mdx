@@ -1,0 +1,240 @@
+---
+title: "Email delivery & templates"
+description: "Configure the email driver, verification links, and customizable transactional email templates for Supabase Lite Auth."
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Supabase Lite sends the same transactional emails as Supabase (signup confirmation, magic link, password recovery, email change, reauthentication). Out of the box it ships Supabase-styled HTML templates. Verification links use `api.external_url` for the Auth endpoint and `auth.site_url` for the post-verification redirect. When `api.external_url` is unset, the link falls back to `auth.site_url`, so email auth works with zero configuration. Everything is overridable. By default, emails are printed to the server console and nothing is actually delivered until you configure a real driver.
+
+## Local development: the console mail catcher
+
+The default driver, `ConsoleEmailDriver`, requires no configuration: it logs every outgoing email to the server console instead of sending it, so you can develop and test email flows without a mail provider. Each email is printed as `To`, `Subject`, and the rendered plain-text body (the default templates put the OTP code and the confirmation link in that body). HTML is never printed.
+
+```
+[@supabase/lite] email captured (not delivered)
+To: user@example.test
+Subject: Confirm Your Signup
+
+Confirm your signup with this code: 123456
+
+Or follow this link: http://localhost:3000/auth/v1/verify?token=...&type=signup&redirect_to=http%3A%2F%2Flocalhost%3A3000
+```
+
+Grep the server output for `email captured` to find these entries among your other logs.
+
+This is Supabase Lite's equivalent of the Supabase CLI's Mailpit: the CLI runs a local SMTP server and web UI at `localhost:54324` (config section `[inbucket]`) that catches every email your project sends. Lite has no built-in SMTP server or mailbox UI; it prints to the console by default. Point `[auth.email.smtp]` at a real SMTP server (including a local one like Mailpit) to send for real — see [SMTP](#smtp) below. `[inbucket]` is still parsed for compatibility but not acted on: lite never starts a local mailbox service.
+
+Note that `enable_confirmations` under `[auth.email]` defaults to `false`, matching upstream, so signups autoconfirm and no email is sent at all until you turn it on.
+
+To silence the console output, pass `{ silent: true }`; to send it somewhere else (a file, a test spy, structured logging), pass a custom `logger`:
+
+```ts
+import { App, ConsoleEmailDriver } from "@supabase/lite";
+
+const app = new App({
+  connection,
+  auth: { jwt_secret, site_url: "https://app.example.com" },
+  options: {
+    drivers: {
+      email: new ConsoleEmailDriver({ silent: true }),
+      // or: new ConsoleEmailDriver({ logger: { info: (message) => myLogger.info(message) } }),
+    },
+  },
+});
+```
+
+## Verification links
+
+Emailed links point at the auth server's verify endpoint:
+
+```
+{api.external_url}/auth/v1/verify?token=<hash>&type=<type>&redirect_to=<auth.site_url>
+```
+
+`GET /auth/v1/verify` verifies the token server-side and issues a `303` redirect to `redirect_to` (falling back to `auth.site_url` if the target is not allow-listed), with the session in the URL fragment on success or `error`/`error_code` on failure — matching GoTrue. Set the public Auth server origin under `[api]`, and set the redirect URL (plus any additional allowed redirects) under `[auth]`:
+
+```toml
+[api]
+external_url = "https://api.example.com"
+
+[auth]
+site_url = "https://app.example.com"
+additional_redirect_urls = ["https://app.example.com/welcome"]
+```
+
+If `api.external_url` is omitted, the verification endpoint uses `auth.site_url` as a same-origin fallback.
+
+Every email flow that takes a `redirectTo` option in supabase-js (`signUp`, `signInWithOtp`,
+`resetPasswordForEmail`, `resend`, and `updateUser` for email changes) can select the destination of
+the emailed link. Supalite validates that URL against the same `site_url` and
+`additional_redirect_urls` rules before it goes into the email. If the value is not allowed, or no
+value is sent, supalite uses the `Referer` header when that header is allowed, and otherwise falls
+back to `site_url`. This matches GoTrue.
+
+The 6-digit numeric code is delivered in the same email and verified against the database, so both `verifyOtp({ token_hash })` and `verifyOtp({ email, token })` work with any driver and across isolates.
+
+## SMTP
+
+Unlike the other drivers, SMTP can be configured directly in `config.toml` — matching `supabase start`, which wires `GOTRUE_SMTP_*` from the same section. Set `enabled = true` and lite auto-selects `SmtpEmailDriver`, no `options.drivers.email` needed:
+
+```toml
+[auth.email.smtp]
+enabled = true
+host = "localhost"
+port = 1025
+user = "apikey"
+pass = "env(SMTP_PASSWORD)"
+admin_email = "admin@example.com"
+sender_name = "My App"
+```
+
+`host`, `port`, `user`, `pass`, and `admin_email` are all required when `enabled = true` — matching the upstream `supabase` CLI's own validation. The app throws a clear config error at startup otherwise: `Missing required field in config: auth.email.smtp.<field>`. That example points at [Mailpit](https://mailpit.axllent.org/) running locally (`docker run -p 1025:1025 -p 8025:8025 axllent/mailpit`); open `http://localhost:8025` for the mailbox UI (Mailpit accepts any user/pass).
+
+`SmtpEmailDriver` is also available for programmatic construction, same as the other bundled drivers:
+
+```ts
+import { App, SmtpEmailDriver } from "@supabase/lite";
+
+const app = new App({
+  connection,
+  auth: { jwt_secret, site_url: "https://app.example.com" },
+  options: {
+    drivers: {
+      email: new SmtpEmailDriver({
+        host: "smtp.sendgrid.net",
+        port: 587,
+        user: "apikey",
+        pass: process.env.SENDGRID_API_KEY!,
+        from: "auth@example.com",
+      }),
+    },
+  },
+});
+```
+
+`SmtpEmailDriver` sends via [Nodemailer](https://nodemailer.com/). TLS behavior follows Nodemailer's own options: implicit TLS on port `465` (`secure` defaults to `port === 465`), opportunistic `STARTTLS` otherwise. When credentials (`user`/`pass`) are configured and the connection isn't already implicit-TLS, `requireTls` defaults to `true` — the driver fails instead of sending credentials over a plaintext connection when `STARTTLS` isn't offered. Pass `requireTls: false` to opt back into best-effort `STARTTLS`, or `rejectUnauthorized: false` to accept a self-signed certificate. Config-driven SMTP (`[auth.email.smtp]`) always has credentials (they're required), so it always requires TLS by default.
+
+`from` (and the programmatic driver's `from` option) accepts either a plain address string or a structured `{ name, address }` object; Nodemailer encodes the display name safely, so names containing quotes or non-ASCII characters round-trip correctly in the generated MIME. `sender_name` in `config.toml` is passed through this way automatically.
+
+`SmtpEmailDriver` requires Node or Bun (Nodemailer needs `node:net`/`node:tls`). It is not supported on Cloudflare Workers or in the browser — `send()` throws `SMTP email is not supported in this runtime (SmtpEmailDriver requires Node or Bun)` there.
+
+<Aside type="caution">
+Explicit `options.drivers.email` always wins over `[auth.email.smtp]`, even when `enabled = true`. `enabled` is a plain boolean and defaults to its zero value, `false`: an `[auth.email.smtp]` section present in `config.toml` without `enabled = true` (or with it explicitly `false`) behaves exactly like no section at all — `ConsoleEmailDriver` is used.
+</Aside>
+
+## Choosing an email driver
+
+The default driver is `ConsoleEmailDriver` (see [Local development](#local-development-the-console-mail-catcher) above), which only logs emails to the console. Real drivers (`Resend`, `AWS SES`, `Sendmail`, `SMTP`) ship with the library and are injected programmatically when you construct the app:
+
+```ts
+import { App, ResendEmailDriver } from "@supabase/lite";
+
+const app = new App({
+  connection,
+  auth: {
+    jwt_secret,
+    site_url: "https://app.example.com",
+    email: { enable_confirmations: true },
+  },
+  options: {
+    drivers: {
+      email: new ResendEmailDriver({
+        apiKey: process.env.RESEND_API_KEY!,
+        from: "auth@example.com",
+      }),
+    },
+  },
+});
+```
+
+`AwsSesEmailDriver`, `SendmailEmailDriver`, and `SmtpEmailDriver` (see [SMTP](#smtp) above) are available from the same entry point. Any object implementing `send({ to, subject, text, html })` works as a custom driver.
+
+## Bring your own provider
+
+If none of the bundled drivers fit, implement `EmailDriver` yourself. It needs one method, `send({ to, subject, text, html })`:
+
+```ts
+import type { EmailDriver } from "@supabase/lite";
+
+class MyApiEmailDriver implements EmailDriver {
+  async send({ to, subject, text, html }: {
+    to: string; subject: string; text?: string; html?: string;
+  }) {
+    await fetch("https://api.my-email-provider.test/v1/send", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.MY_EMAIL_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ to, subject, text, html }),
+    });
+  }
+}
+```
+
+Custom drivers are always injected via `options.drivers.email` when constructing the `App`, the same as the bundled drivers above. SMTP is the one exception: it also auto-selects from `[auth.email.smtp]` in `config.toml` (see [SMTP](#smtp)), though an explicit `options.drivers.email` still wins over it.
+
+## OTP length and expiry
+
+```toml
+[auth.email]
+otp_length = 6      # digits in the emailed code
+otp_expiry = 3600   # seconds before the code / link expires (default 1 hour)
+```
+
+Expiry is enforced in `verifyOtp` against the token's `*_sent_at` timestamp; an expired code returns `otp_expired`.
+
+## Email send cooldown
+
+`max_frequency` sets the minimum interval between signup confirmation, password recovery, and email-change emails:
+
+```toml
+[auth.email]
+enable_confirmations = true
+max_frequency = "60s"
+```
+
+The value uses Go duration syntax, including composite and fractional forms such as `"1m0s"` and `"1.5m"`. Invalid configured durations fail during Auth initialization.
+
+Repeated `signUp()`, `recover()`, and `resend()` calls during the applicable interval return `429 over_email_send_rate_limit` with the remaining seconds. After the interval expires, Lite sends a fresh email and invalidates the previous OTP. A repeated signup keeps the existing account ID, password, and metadata; if confirmations have since been disabled, it implicitly confirms the account and returns a session. Confirmed accounts and unknown resend addresses retain privacy-preserving success behavior without sending email.
+
+## Secure email change
+
+When a user changes their email, `double_confirm_changes` (default `true`) controls how the change is confirmed:
+
+- **`true` (secure):** the confirmation that finalizes the change is delivered to the **current** address and hashed with it. Confirming it changes the account email. A token delivered to the pending new address cannot finalize the change on its own.
+- **`false` (insecure):** the confirmation is sent to the new address and confirming it finalizes the change immediately.
+
+<Aside type="caution">
+Supabase Lite's secure email change is **partial**: it confirms from the current mailbox before finalizing (so a stolen session cannot move the account email to an attacker's mailbox using only that mailbox), but it does **not** implement GoTrue's full two-mailbox flow that requires *both* the old and new addresses to confirm before the change takes effect. The current-email confirmation alone finalizes. See [LIMITATIONS.md](https://github.com/supabase/lite/blob/main/LIMITATIONS.md).
+</Aside>
+
+## Customizing templates
+
+Override the subject and HTML per email type under `[auth.email.template.<type>]`, where `<type>` is one of `invite`, `confirmation`, `recovery`, `magic_link`, `email_change`:
+
+```toml
+[auth.email.template.confirmation]
+subject = "Confirm your account"
+content_path = "./emails/confirmation.html"
+```
+
+Templates use the same Go-template variables as upstream GoTrue, so existing Supabase templates work unchanged:
+
+| Variable | Description |
+|---|---|
+| `{{ .ConfirmationURL }}` | Full verification link (see above) |
+| `{{ .Token }}` | The numeric OTP code |
+| `{{ .TokenHash }}` | The hashed token used in the link |
+| `{{ .SiteURL }}` | Configured `site_url` |
+| `{{ .Email }}` | Recipient email |
+| `{{ .NewEmail }}` | New address (email change) |
+| `{{ .RedirectTo }}` | Post-verification redirect target |
+| `{{ .Data }}` | User metadata |
+
+<Aside type="caution">
+`content_path` is read from the filesystem, so it is available on Node and the CLI but not in browser or Cloudflare Workers bundles. On those runtimes the built-in default templates are used (or inline your HTML another way). Zero-config defaults work everywhere.
+</Aside>
+
+When no `content_path` is set, the built-in Supabase-styled default template for that type is used.

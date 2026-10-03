@@ -1,9 +1,6 @@
 Supalite
 
-The test harness uses the published @supabase/lite 0.11.0 package,
-licensed under Apache-2.0. Generated baseline and patched package copies
-retain that package's LICENSE. Package integrity and bundle checksums
-are verified by scripts/prepare-baseline.mjs.
-
-The feature modules in src/ are maintained separately from the published
-baseline.
+Includes the unmodified @supabase/lite 0.11.0 npm distribution.
+Copyright 2026 Supabase. Licensed under the Apache License, Version 2.0.
+The upstream license is preserved in LICENSE and upstream/lite-0.11.0/LICENSE.
+Package and file checksums are recorded in upstream/manifest.json.

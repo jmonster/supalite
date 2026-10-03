@@ -1,0 +1,49 @@
+---
+title: "Introduction"
+description: "What Supabase Lite is, what's supported today, and how it relates to hosted Supabase."
+---
+
+import { Aside, Card, CardGrid } from '@astrojs/starlight/components';
+import banner from '../../../../.github/assets/banner.png';
+
+![Supabase Lite banner](/banner.png)
+
+Supabase Lite (`@supabase/lite`) is a lightweight, TypeScript-native reimplementation of Supabase features while being database agnostic and mainly focused on SQLite. It ships a PostgREST-compatible Data API and a GoTrue-compatible Auth API, so `@supabase/supabase-js` works unchanged against it for the methods it supports. 
+
+SQLite is the primary database (`bun:sqlite`, `node:sqlite`, SQLite WASM, Cloudflare D1/DO), with PGlite and Postgres available as alternative backends. Everything runs in one process: no Docker, no separate database container. You write Postgres DDL in `supabase/schemas/*.sql`, and on the SQLite path it gets translated on the fly. Once your project outgrows SQLite, you can seamlessly upgrade to Supabase.
+
+Supabase Lite supplements Supabase rather than replacing it. It implements roughly 60% of the most-used `supabase-js` surface, the subset most useful for fast prototyping, with a clear upgrade path to hosted or self-hosted Supabase when a project outgrows it.
+
+<Aside type="caution">
+Supabase Lite is pre-1.0 / alpha. APIs, config shape, and the on-disk format may change between releases. Not for production use yet.
+</Aside>
+
+## Scope at a glance
+
+| Product | Status | Notes |
+|---|---|---|
+| Data API | Supported | 54/74 `supabase-js` query-builder methods on SQLite, 72/74 on Postgres/PGlite. Core CRUD, filters, embedding, and RLS all work. See [Compatibility](/compatibility). |
+| Auth | Partial | 13 backend endpoints implemented (email/password, OTP, sessions, password recovery, OAuth sign-in for `github`/`google`). Other OAuth providers, anonymous sign-in, manual identity linking, admin API, and MFA are planned. See [Auth overview](/auth/overview). |
+| Storage | Experimental | 20/20 `supabase-js` methods implemented, gated behind `EXPERIMENTAL_STORAGE`. Role-based access and RLS on storage objects are still pending. See [Storage overview](/storage/overview). |
+| Realtime | Not yet | Config schema exists; no WebSocket server or channels yet. See [Realtime](/other/realtime). |
+| Edge Functions | Not yet | Config schema exists; no runtime or `/functions/v1` routes yet. See [Edge Functions](/other/edge-functions). |
+
+Compatibility is measured against the `@supabase/supabase-js` surface, not raw Postgres wire-protocol access. Direct SQL clients, `psql`, and third-party Postgres tooling are not a target.
+
+<Aside type="note">
+These are capability-level rollups. The package installed in your project ships an exact, per-method matrix in `STATUS.md` (and a companion `FEATURES.md` with effort/blocker notes for gaps) that updates every time you run `npm install`. Treat that file as the source of truth for exact counts.
+</Aside>
+
+For the concepts Supabase Lite implements unchanged from upstream (the general Supabase architecture, product list, and terminology), see the [Supabase docs](https://supabase.com/docs) and the [architecture guide](https://supabase.com/docs/guides/getting-started/architecture). This site only documents where Supabase Lite diverges.
+
+<CardGrid>
+  <Card title="Quickstart">
+    Install, scaffold a project, and run your first query. [Read more →](/quickstart/)
+  </Card>
+  <Card title="Compatibility">
+    Capability-level support matrix across SQLite, PGlite, and Postgres. [Read more →](/compatibility/)
+  </Card>
+  <Card title="Database">
+    Backends, the Data API, RLS, schemas, and migrations. [Read more →](/database/overview/)
+  </Card>
+</CardGrid>

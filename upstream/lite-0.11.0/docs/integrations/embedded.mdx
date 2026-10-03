@@ -1,0 +1,115 @@
+---
+title: "Embedded / programmatic"
+description: "Use the App class directly in Bun, Node, browser, or edge runtimes, without the CLI."
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+Supabase Lite has no required CLI dependency at runtime. The `App` class is a Web-API-compliant request handler (`app.fetch`) you can construct directly in Bun, Node, the browser, or an edge runtime, and either call in-process or serve over HTTP yourself.
+
+## Studio UI
+
+The React Studio UI is available as a separate export:
+
+```tsx
+import { Studio } from "@supabase/lite/studio";
+import "@supabase/lite/studio.css";
+
+export function Admin() {
+  return <Studio basePath="/admin/" projectName="Local project" />;
+}
+```
+
+`basePath` accepts paths with or without trailing slashes. The Studio stylesheet mirrors upstream Supabase Studio, including Tailwind preflight and global page layout rules. Mount it on a dedicated full-page route; the stylesheet is not isolated from an existing host page's global styles.
+
+## Constructing an App
+
+```ts
+import { App } from "@supabase/lite";
+import { createConnection } from "@supabase/lite/sqlite";
+
+const connection = await createConnection({ url: "file:./data.db" });
+const app = new App({ connection, auth: { enabled: true } });
+
+// optionally apply schema on boot
+const schema = await Bun.file("./schema.sql").text();
+await app.connection.createMigrator(schema).migrate();
+
+export default app; // app.fetch handles requests
+```
+
+`App` takes a config object whose required field is `connection` (a `Connection` or a `Promise<Connection>`, useful when the connection itself needs an async setup step, as with Cloudflare's `getPlatformProxy`). The rest of the config is the same schema `config.toml` validates against (`auth`, `db`, `api`, `studio`, ...), plus an `options` object for `server` and `drivers` overrides. The `README.md` shipped in the package documents the full config shape.
+
+## Two ways to use it
+
+<Tabs>
+<TabItem label="In-process (no network)">
+Skip HTTP entirely and call the app's own client, which routes through `app.fetch` internally in the same process:
+
+```ts
+const client = app.getClient();
+const { data } = await client.from("todos").select("*");
+```
+
+Same `@supabase/supabase-js` API, no HTTP round trip. Useful for scripts, tests, and server-side code that doesn't need a network boundary. `getClient()` defaults to the configured `auth.publishable_key` (override with `getClient({ apikey })`). Disable API-key enforcement entirely with `options.server.apiKeys: false`, or supply a custom key→role resolver via `options.server.apiKeys.resolver`. See [API keys](/auth/overview#api-keys).
+</TabItem>
+<TabItem label="Over HTTP">
+Serve `app.fetch` with any Web-API-compatible server and point `@supabase/supabase-js` at the URL, same as talking to a hosted Supabase project:
+
+```ts
+// Bun
+const server = Bun.serve({
+  hostname: "127.0.0.1",
+  fetch(request) {
+    return app.fetch(request, {
+      peerAddress: server.requestIP(request)?.address ?? null,
+    });
+  },
+});
+```
+
+```ts
+// Node, via @hono/node-server
+import { serve } from "@hono/node-server";
+serve({
+  port: 3000,
+  hostname: "127.0.0.1",
+  fetch(request, env) {
+    return app.fetch(request, {
+      peerAddress: env.incoming.socket.remoteAddress ?? null,
+    });
+  },
+});
+```
+
+```ts
+import { createClient } from "@supabase/supabase-js";
+const client = createClient("http://127.0.0.1:3000", "<sb_publishable_...>");
+```
+
+`AppRequestContext.peerAddress` is trusted transport metadata, not a forwarded header. Supply it only from the socket object owned by your server adapter. If the adapter cannot determine the peer, pass `null` so admin mode fails closed. Omitting the context preserves the in-process/edge fallback, where only the loopback hostname guard is available.
+</TabItem>
+</Tabs>
+
+## Drivers per runtime
+
+`@supabase/lite/sqlite` resolves to the right SQLite binding automatically based on the runtime's export condition (`bun`, `node`, `browser`); you don't need to pick a driver yourself for local SQLite use. For other backends, import the matching subpath explicitly:
+
+| Runtime/DB | Import |
+|---|---|
+| Bun | `@supabase/lite/sqlite` (resolves to `bun:sqlite`) |
+| Node.js ≥ 22 | `@supabase/lite/sqlite` (resolves to `node:sqlite`) |
+| Browser | `@supabase/lite/sqlite` (resolves to `@sqlite.org/sqlite-wasm`) |
+| Cloudflare Workers (D1) | `@supabase/lite/workerd` |
+| PGlite | `@supabase/lite/pglite` |
+| Postgres | `@supabase/lite/postgres` |
+| libsql / Turso | `@supabase/lite/libsql` |
+
+See [Database backends](/database/backends) for how backend choice affects feature support (RLS enforcement, `rpc()`, ranges, and so on).
+
+## Related
+
+- [Running Supabase Lite](/running): how embedding compares to `lite dev`/`lite start`/the Vite plugin.
+- [Database backends](/database/backends): connection config per backend.
+- [Frameworks](/integrations/frameworks): the Next.js and Cloudflare Workers patterns built on this `App` API.
+- Upstream: [Supabase local development](https://supabase.com/docs/guides/local-development). There's no embedded/programmatic mode in Supabase itself; this is a Supabase Lite-specific concept for running the backend inside your own process instead of Docker.

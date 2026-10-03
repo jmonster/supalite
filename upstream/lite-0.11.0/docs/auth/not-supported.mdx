@@ -1,0 +1,61 @@
+---
+title: "Auth: not supported"
+description: "Anonymous sign-in, manual identity linking, the admin API, MFA, and OAuth providers beyond github/google are not implemented yet. What's planned vs. not planned, and the hosted-Supabase workaround."
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+These gaps are backend-independent: they're missing regardless of whether you run SQLite, PGlite, or Postgres. Auth doesn't have the SQLite-vs-Postgres split the Data API has. Nothing here is a SQLite platform limitation; it's just not built yet.
+
+<Aside type="caution">
+If your app needs any of the flows below today, run it against hosted Supabase instead of Supabase Lite, or gate the feature until it lands.
+</Aside>
+
+<Aside type="note">
+`signInWithOAuth()` / `exchangeCodeForSession()` are implemented for the `github` and `google` providers (PKCE + implicit flows, automatic account linking on a verified-email match). See [Supported flows](/auth/supported-flows). Enabling any other configured provider, including `apple`, returns "provider ... is not yet implemented" — that gap is tracked below.
+</Aside>
+
+<Aside type="note">
+`GET /.well-known/jwks.json` and `GET /.well-known/openid-configuration` are served, but the key set is empty: tokens are signed with HS256 only, and there are no asymmetric signing keys. JWKS-based verification (for example `getClaims()` with [asymmetric JWT signing keys](https://supabase.com/docs/guides/auth/signing-keys)) is therefore not available.
+</Aside>
+
+## Planned
+
+Config schema or partial groundwork exists; these are the next Auth surfaces on the roadmap.
+
+| Method | Upstream doc | Notes |
+|---|---|---|
+| `signInWithOAuth()` / `exchangeCodeForSession()` for other providers | [Social login](https://supabase.com/docs/guides/auth/social-login) | Config schema exists for the remaining 16 providers (incl. Apple); `github`/`google` already work |
+| `signInAnonymously()` | [Anonymous sign-ins](https://supabase.com/docs/guides/auth/auth-anonymous) | Create an anonymous session |
+| `linkIdentity()` | [Auth admin API](https://supabase.com/docs/reference/javascript/auth-admin-api) | Manually link an OAuth identity to an existing user; automatic linking on OAuth sign-in already works |
+| `unlinkIdentity()` | [Auth admin API](https://supabase.com/docs/reference/javascript/auth-admin-api) | Remove a linked identity |
+| `admin.createUser()` | [Auth admin API](https://supabase.com/docs/reference/javascript/auth-admin-api) | Direct user creation, skips confirmation |
+| `admin.listUsers()` | [Auth admin API](https://supabase.com/docs/reference/javascript/auth-admin-api) | Paginated user list |
+| `admin.getUserById()` | [Auth admin API](https://supabase.com/docs/reference/javascript/auth-admin-api) | Fetch user by ID |
+| `admin.updateUserById()` | [Auth admin API](https://supabase.com/docs/reference/javascript/auth-admin-api) | Direct user update |
+| `admin.deleteUser()` | [Auth admin API](https://supabase.com/docs/reference/javascript/auth-admin-api) | User deletion |
+| `admin.inviteUserByEmail()` | [Auth admin API](https://supabase.com/docs/reference/javascript/auth-admin-api) | Send an invite |
+| `admin.generateLink()` | [Auth admin API](https://supabase.com/docs/reference/javascript/auth-admin-api) | Generate verification/reset links |
+| `admin.signOut()` | [Auth admin API](https://supabase.com/docs/reference/javascript/auth-admin-api) | Admin-initiated logout |
+| `admin.mfa.listFactors()` | [Auth MFA](https://supabase.com/docs/guides/auth/auth-mfa) | List a user's MFA factors |
+| `admin.mfa.deleteFactor()` | [Auth MFA](https://supabase.com/docs/guides/auth/auth-mfa) | Remove an MFA factor |
+
+## Not currently planned
+
+No implementation work scheduled. Reach for hosted Supabase if you need these.
+
+| Area | Methods | Upstream doc |
+|---|---|---|
+| MFA / TOTP | `mfa.enroll()`, `mfa.challenge()`, `mfa.verify()`, `mfa.challengeAndVerify()`, `mfa.unenroll()`, `mfa.listFactors()`, `mfa.getAuthenticatorAssuranceLevel()` | [Auth MFA](https://supabase.com/docs/guides/auth/auth-mfa) |
+| WebAuthn | `mfa.webauthn.*` (5 methods) | [Auth MFA](https://supabase.com/docs/guides/auth/auth-mfa) |
+| SSO/SAML | `signInWithSSO()` | [Auth guide](https://supabase.com/docs/guides/auth) |
+| Web3 | `signInWithWeb3()` | [Auth guide](https://supabase.com/docs/guides/auth) |
+| OIDC | `signInWithIdToken()` | [Auth guide](https://supabase.com/docs/guides/auth) |
+| OAuth server | `oauth.getAuthorizationDetails()`, `oauth.approveAuthorization()`, `oauth.denyAuthorization()`, `oauth.listGrants()`, `oauth.revokeGrant()` | [Auth admin API](https://supabase.com/docs/reference/javascript/auth-admin-api) |
+| OAuth admin | `oauth.listClients()`, `oauth.createClient()`, `oauth.getClient()`, `oauth.updateClient()`, `oauth.deleteClient()`, `oauth.regenerateClientSecret()` | [Auth admin API](https://supabase.com/docs/reference/javascript/auth-admin-api) |
+
+## Related schema gaps
+
+Because the OAuth 2.1 authorization server/admin surface and MFA aren't implemented, the underlying `auth.*` tables for those features (`auth.mfa_factors`, `auth.sso_providers`, `auth.oauth_clients`, and similar) also aren't reconciled against upstream. `auth.flow_state`, used by the implemented social-login PKCE flow, is reconciled.
+
+For what does work today, see [Supported flows](/auth/supported-flows). For the general Auth model these gaps sit on top of, see the [Supabase Auth docs](https://supabase.com/docs/guides/auth).

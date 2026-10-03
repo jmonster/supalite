@@ -1,0 +1,52 @@
+---
+title: "Auth overview"
+description: "GoTrue-compatible Auth API for @supabase/lite: what's implemented, what's planned, and how it fits into supabase-js."
+---
+
+import { Aside, Card, CardGrid } from '@astrojs/starlight/components';
+
+Supabase Lite ships a GoTrue-compatible Auth API at `/auth/v1/*`. For the methods it implements, `@supabase/supabase-js`'s `auth` client works unchanged: same request shapes, same JWT format, same session/refresh-token behavior.
+
+<Aside type="note">
+Auth support is capability-independent of the database backend. The same 13 endpoints work identically on SQLite, PGlite, and Postgres, since Auth is not a Postgres-vs-SQLite translation problem the way the Data API is. One exception: on the Cloudflare D1 backend, multi-statement Auth transaction spans (OAuth callback/token writes, email-change and other OTP verification) run best-effort without a wrapping transaction (D1 has no callback transaction API); single-statement guards still prevent auth-code/state reuse. All other backends, including Durable Objects, are fully transactional.
+</Aside>
+
+## Coverage
+
+13 of 63 `supabase-js` auth methods are implemented as real backend endpoints, including OAuth sign-in for `github` and `google` (PKCE + implicit flows, automatic account linking). Of the remaining 50: 13 are planned (other OAuth providers incl. Apple, anonymous sign-in, manual identity linking, the admin API), 27 are not currently planned (MFA, SSO, Web3, OAuth-server), and 10 are client-side-only helpers that need no backend (`getSession`, `onAuthStateChange`, and similar) and already work as-is since they don't hit the network.
+
+<CardGrid>
+  <Card title="Supported flows">
+    Email/password, OTP, sessions, password recovery, OAuth sign-in (github/google): the 13 implemented endpoints with examples. [Read more →](/auth/supported-flows/)
+  </Card>
+  <Card title="Not supported">
+    Other OAuth providers, anonymous sign-in, admin API, MFA: what's missing and the hosted-Supabase workaround. [Read more →](/auth/not-supported/)
+  </Card>
+  <Card title="Email delivery & templates">
+    The console mail catcher, choosing a real email driver, verification links, and customizable templates. [Read more →](/auth/email/)
+  </Card>
+</CardGrid>
+
+## API keys
+
+Supabase Lite issues opaque `sb_publishable_*` / `sb_secret_*` keys, matching Supabase's current key format — generated per project, never hardcoded. `lite init` generates any missing key(s) into root `.env` (`SUPABASE_PUBLISHABLE_KEY` / `SUPABASE_SECRET_KEY`, per-variable — an existing one is never overwritten) and wires `config.toml`'s `auth.publishable_key` / `auth.secret_key` to reference them via `env(VAR)` (same field names as the upstream `supabase` CLI). `lite generate-keys` (re)generates the whole pair; `lite start`/`lite dev` print the resolved keys.
+
+`sb_publishable_*` authenticates as `anon`, `sb_secret_*` as `service_role` (bypasses RLS, including on SQLite). Enforcement on `/rest/v1` and `/auth/v1` is opt-in: it activates once at least one key is configured — an unconfigured key simply never matches, and an unconfigured project keeps the old behavior (any/no `apikey` accepted). Keys must arrive via the `apikey` header or `?apikey=` query param (what `supabase-js` sends automatically); a key sent only via `Authorization` is rejected, matching upstream self-hosted conformance. A real user session JWT in `Authorization` always outranks the API key. A secret key rejected from a browser `User-Agent` mirrors the hosted gateway's browser guard. Legacy JWT-as-apikey (the old `ANON_KEY`/`SERVICE_ROLE_KEY` HS256 tokens) is not supported.
+
+`/storage/v1` is transform-only, like upstream self-hosted Kong: it never 401s on a missing/invalid key (public objects, signed URLs, and S3 presigned flows stay keyless), but a secret key still satisfies storage's own authed routes as `service_role`.
+
+The OpenAPI root (`GET /rest/v1/`) requires the secret key, mirroring upstream's admin-only ACL on that route: a publishable key gets 403, the secret key gets 200.
+
+There is one exception to enforcement, and it only exists locally: [admin mode](/running#admin-mode). Loopback `lite dev`/`lite start` and Vite dev listeners serve keyless `/rest/v1` requests (`/storage/v1` on the CLI too) as `service_role`, so browser Studio can work without receiving a secret key. Only same-origin requests on a loopback socket **and** a loopback hostname are elevated, and credentialed requests keep their normal role. `--host [host]` and exposed Vite listeners default admin off unless explicitly enabled; preview and embedders default off.
+
+Embedders using the `App` class directly can disable enforcement (`options.server.apiKeys: false`) or supply a custom resolver (`options.server.apiKeys.resolver`); `app.getClient()` defaults to the configured publishable key. See `STATUS.md` (`#api-keys`) in the installed package for the full behavior matrix.
+
+## What's shared with the Data API
+
+Auth issues the JWTs that Row Level Security reads. `auth.uid()`, `auth.role()`, and `auth.jwt()` in your RLS policies resolve from the same token this Auth API signs, on every backend. See [Database: RLS](/database/rls) for how policies consume these claims, and [Database backends](/database/backends) for switching between SQLite, PGlite, and Postgres.
+
+<Aside type="note">
+This page tracks capability-level rollups. The package installed in your project ships an exact method-by-method matrix in `STATUS.md` that updates every `npm install`. Treat that file as the source of truth for exact counts. See also [Compatibility](/compatibility).
+</Aside>
+
+For the Auth concepts that behave identically to upstream (JWT structure, session lifecycle, GoTrue's general model), see the [Supabase Auth docs](https://supabase.com/docs/guides/auth).

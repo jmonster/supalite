@@ -1,7 +1,6 @@
-node_modules/
-dist/
-.generated/
-reports/*.json
+/node_modules/
+/.generated/
+/dist/
 *.db
 *.db-shm
 *.db-wal

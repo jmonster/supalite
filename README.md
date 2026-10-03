@@ -1,68 +1,35 @@
 # Supalite
 
-SQLite JSONB containment filters for `@supabase/lite@0.11.0`, with PostgreSQL differential tests and a repeated-column filter fix.
+This repository preserves the published `@supabase/lite` **0.11.0** npm distribution as a reproducible baseline.
 
-The JSONB compiler supports `.contains()` and `.containedBy()` on nested objects and arrays. Predicates execute in SQL and apply to row selection, counts, pagination, updates, and deletes. The adapter targets SQLite columns declared as `jsonb`; PostgreSQL and SQL-array operators retain their existing behavior.
+## Contents
 
-## Run locally
+- `upstream/lite-0.11.0/`: all 77 files from the [published npm tarball](https://registry.npmjs.org/@supabase/lite/-/lite-0.11.0.tgz), with their original bytes and file modes
+- `upstream/manifest.json`: package version, npm integrity, tarball SHA-256, and each file's SHA-256, size, and mode
+- `scripts/prepare-baseline.mjs`: validates the installed package, lockfile integrity, and complete vendored distribution, then copies the vendored files into `.generated/baseline/node_modules/@supabase/lite/`
+- `test/`: basic integration smoke tests using `@supabase/supabase-js` with the Node SQLite, libSQL, and PGlite adapters
 
-Requires Node.js 24 or newer.
+The npm artifact contains bundled JavaScript, type declarations, and package documentation. It does not contain the original upstream TypeScript implementation. The files under `upstream/lite-0.11.0/` are the published distribution.
+
+## Run
+
+Requires Node.js 24 or later.
 
 ```sh
 npm ci
 npm test
-npm run demo
 ```
 
-Tests use Node SQLite, local libSQL, and PostgreSQL through PGlite. `npm test` compiles the TypeScript and prepares separate baseline and patched packages in `.generated/`. The preparation script checks the pinned package version, npm integrity, bundle checksum, and each patch location. It leaves the installed package unchanged.
+`npm test` first verifies and prepares the baseline, then creates a table on each adapter and checks SDK insert, select, equality-filter, and exact-count operations. Schema setup uses the package's migrator. These smoke tests do not establish comprehensive compatibility.
 
-- `npm run test:core`: compiler differential tests
-- `npm run benchmark`: local workload measurements, written to `reports/benchmark.json`
+To verify and copy the distribution without running the smoke tests:
 
-## JSONB filters
-
-For a `documents` table with a `jsonb` column named `body`:
-
-```js
-await client.from('documents').insert([
-  { id: 1, body: { profile: { plan: 'pro', active: true } } },
-  { id: 2, body: { profile: { plan: 'starter' } } },
-])
-
-const result = await client
-  .from('documents')
-  .select('id')
-  .contains('body', { profile: { plan: 'pro' } })
-  .order('id')
-// result.data: [{ id: 1 }]
+```sh
+npm run prepare:baseline
 ```
 
-Use the patched package prepared by this repository to run this example; installing the published 0.11.0 package alone does not enable these filters. See [the executable catalog example](examples/catalog.mjs) for client setup and baseline comparisons.
+Generated files and installed dependencies are ignored; the vendored `dist/` files are tracked.
 
-Array matching preserves element boundaries: `[{ color: 'red' }, { size: 'M' }]` does not contain `[{ color: 'red', size: 'M' }]`.
+## License
 
-Pass JSON arrays and scalars as serialized JSON. A JavaScript array passed directly to Supabase-js `.contains()` is encoded as a PostgreSQL array literal:
-
-```js
-client.from('documents').select('id')
-  .contains('body', JSON.stringify([{ color: 'red', size: 'M' }]))
-```
-
-Object operands can be passed directly. `.not()` and `.or()` accept raw PostgREST filter syntax.
-
-## Tests and limitations
-
-Tests compare SQLite containment results with PostgreSQL `@>` and `<@` in PGlite, then exercise client requests on Node SQLite, libSQL, and PGlite. They cover nested containers, JSON types, missing values, SQL NULL, negation, JSON-preserving paths, counts, pagination, filtered mutations, and repeated filters on one column.
-
-- Hosted D1, Durable Objects, Bun, browser SQLite, and hosted Supabase have not been tested here
-- Filter integers outside `Number.isSafeInteger` are rejected; arbitrary-precision numbers and raw stored duplicate object labels can differ from PostgreSQL
-- Default limits are depth 16, 128 value nodes, and 64 bound parameters per filter; requests using the feature allow 100 total parameters and 100,000 SQL bytes
-- Broad scans and large nested arrays can be expensive; no JSON index is added
-
-See [design and limits](docs/design-and-porting.md) and [performance measurements](docs/performance.md).
-
-## Baseline
-
-The runtime baseline is the published `@supabase/lite@0.11.0` npm artifact. Its original TypeScript source and upstream test/build configuration are not included in that artifact. The TypeScript under `src/` and the tests in this repository are maintained separately. This repository is not published to npm.
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development commands. Licensed under [Apache-2.0](LICENSE); generated package copies retain the baseline license.
+The upstream Apache-2.0 license is preserved in [LICENSE](LICENSE) and [upstream/lite-0.11.0/LICENSE](upstream/lite-0.11.0/LICENSE). See [NOTICE](NOTICE) for attribution.

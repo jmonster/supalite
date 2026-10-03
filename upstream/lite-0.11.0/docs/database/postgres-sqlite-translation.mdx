@@ -1,0 +1,165 @@
+---
+title: "Postgres → SQLite translation"
+description: "How Supabase Lite auto-translates Postgres DDL to SQLite, and the exact errors you'll see when something isn't supported."
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+On the SQLite path, every SQL schema you write in `supabase/schemas/*.sql` or `supabase/migrations/*.sql` is Postgres DDL. Supabase Lite's translator (an extension of the Postgres deparser) rewrites it to SQLite on the fly at migration time: 1:1-compatible syntax passes through unchanged, constructs with a SQLite equivalent get rewritten (`SERIAL` → `INTEGER PRIMARY KEY AUTOINCREMENT`, `NOW()` → `datetime('now')`), Postgres-only decorators and privilege metadata (storage parameters, locking clauses, grants, `OWNER TO`) are silently dropped, and constructs with no SQLite counterpart (`LATERAL` joins, table inheritance, function grants) throw a descriptive error at translation time. This page is the reference for debugging translation-time surprises. It does not apply to PGlite/Postgres: those run your DDL as real Postgres, unmodified.
+
+The full auto-generated 74-entry compatibility table ships in the package at `app/POSTGRES-SQLITE-COMPAT.md`. This page covers the parts you're most likely to hit: extensions, type mapping, column defaults, and `CHECK` constraint functions.
+
+## Example translation
+
+```sql
+-- Postgres DDL
+CREATE TABLE users (
+   id         SERIAL PRIMARY KEY,
+   email      VARCHAR(255) UNIQUE NOT NULL,
+   is_active  BOOLEAN DEFAULT true,
+   tags       TEXT[],
+   metadata   JSONB,
+   created_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+```sql
+-- Translated to SQLite
+CREATE TABLE users (
+   id         INTEGER PRIMARY KEY AUTOINCREMENT,
+   email      TEXT UNIQUE NOT NULL CHECK (length(email) <= 255),
+   is_active  INTEGER DEFAULT true CHECK (is_active IN (0, 1)),
+   tags       TEXT CHECK (tags IS NULL OR (json_valid(tags) AND json_type(tags) = 'array')),
+   metadata   TEXT CHECK (metadata IS NULL OR json_valid(metadata)),
+   created_at TEXT DEFAULT (datetime('now')) CHECK (created_at IS NULL OR datetime(created_at) IS NOT NULL)
+) STRICT;
+```
+
+## Extensions
+
+On SQLite, `CREATE EXTENSION` is accepted only for `plpgsql`, `pgcrypto`, and `uuid-ossp`, and those declarations are removed from the translated DDL. The `plpgsql` declaration supports `pg_dump` schema prologues; PL/pgSQL support remains limited to [trigger functions that the translator can inline](/database/functions-triggers/). The UUID declarations support `gen_random_uuid()` and `uuid_generate_v4()` defaults, but no other extension APIs are provided. Creation modifiers such as `IF NOT EXISTS`, `WITH SCHEMA`, `VERSION`, and `CASCADE` are accepted for those three exact names; quoted names are case-sensitive.
+
+`ALTER EXTENSION <accepted-name> SET SCHEMA ...` and `DROP EXTENSION` containing only accepted names are also removed so declarative `db diff` migrations can reconcile extension metadata. Every other create, update, member change, schema move, or drop fails during translation before the migration executes. PGlite and PostgreSQL run extension statements natively instead; see [Supabase's extension guide](https://supabase.com/docs/guides/database/extensions) for the native behavior.
+
+## Type mapping
+
+| Postgres type / syntax | SQLite storage | Notes |
+|---|---|---|
+| `int2`, `smallint`, `int4`, `integer`, `int`, `int8`, `bigint` | `INTEGER` | |
+| `serial`, `bigserial`, `smallserial` (and `serial2`/`4`/`8`) | `INTEGER` | Primary keys become `INTEGER PRIMARY KEY AUTOINCREMENT` |
+| `float4`, `real`, `float8`, `double precision` | `REAL` | |
+| `numeric`, `decimal` | `REAL` | Precision/scale emits a portable `CHECK` |
+| `text`, `varchar(n)`, `char(n)`, `bpchar` | `TEXT` | Length-constrained forms emit `length(...) <= n` |
+| `name` | `TEXT` | 63-character length check |
+| `bytea` | `BLOB` | |
+| `bool`, `boolean` | `INTEGER` | `0`/`1` with `CHECK (... IN (0, 1))` |
+| `date` | `TEXT` | `date(...) IS NOT NULL` validation |
+| `time`, `timetz` | `TEXT` | `time(...) IS NOT NULL` validation |
+| `timestamp`, `timestamptz` | `TEXT` | `datetime(...) IS NOT NULL` validation |
+| `interval` | `TEXT` | Stored as text; interval arithmetic is not emulated |
+| `json`, `jsonb` | `TEXT` | `json_valid(...)` check |
+| `uuid` | `TEXT` | Validates shape, normalizes to lowercase |
+| `inet` | `TEXT` | Validates IPv4/IPv6 with optional CIDR prefix |
+| `CREATE TYPE ... AS ENUM` | `TEXT` | `CHECK (... IN (...))` of allowed values |
+| `<type>[]` / `_type` arrays | `TEXT` | JSON array storage |
+
+**Not supported at all:** `oid`, `xid`, `xid8`, `cid`, `money`, `citext`, `cidr`, `macaddr`, `macaddr8`, `bit`/`bit varying`/`varbit`, geometric types (`point`, `line`, `lseg`, `box`, `path`, `polygon`, `circle`), `xml`, text-search types (`tsvector`, `tsquery`), range and multirange types, `reg*` catalog reference types, and internal/pseudo/handler types.
+
+<Aside type="note">
+On the Postgres path, columns typed as a domain with a `CAST(<domain> AS json)` (PostgREST "data representations") render through that cast on read and `RETURNING`. On SQLite, the known representation types (`color`, `unixtz`, `isodate`, `monetary`, `bytea_b64`) are handled by built-in field shims instead. See the full domain-formatting notes in the package's `STATUS.md` under "Translated Field Types" if you're using custom domains.
+</Aside>
+
+## Column defaults
+
+Only constant expressions and a small allow-list of functions are honored in `DEFAULT` clauses. Most other expressions fail at translation time. The exceptions (a known DDL issue and silently dropped sequence defaults) are listed below.
+
+**Honored:**
+
+| Default expression | SQLite emission |
+|---|---|
+| Literals (`'pending'`, `true`, `0`, `NULL`) | As-is (booleans map to `0`/`1`) |
+| `gen_random_uuid()`, `uuid_generate_v4()` | Inline `randomblob`-based UUID expression (RFC 4122 v4 shape) |
+| `now()`, `current_timestamp` | `datetime('now')` |
+| `current_date` | `date('now')` |
+| `current_time` | `time('now')` |
+| `random()` | `random()` |
+| Calls to other registry functions (`lower('X')`) | Parenthesized: `DEFAULT (lower('X'))` |
+
+<Aside type="caution">
+Known issue: a bare operator expression such as `DEFAULT 1 + 1` translates without an error to `DEFAULT 1 + 1`. SQLite rejects that DDL (`near "+": syntax error`), so the migration fails when it runs. Use a literal (`DEFAULT 2`) instead.
+</Aside>
+
+**Not honored**: fails with `Function call "<name>" not supported`:
+
+- `auth.uid()`, `auth.role()`, `auth.email()`, `auth.jwt()`: these read JWT claims and have no SQLite equivalent as a column default. (They *do* work inside RLS `USING`/`WITH CHECK`, where they're rewritten on the AST instead of evaluated as a scalar default; see [Row Level Security](/database/rls).)
+- `currval(...)`, and a bare `SELECT nextval(...)` statement.
+- `clock_timestamp()`, `statement_timestamp()`, `transaction_timestamp()`, `txid_current()`, and other volatile catalog functions.
+- Any user-defined function, or any function not in the allow-list above.
+
+**Silently dropped** (no error, no warning):
+
+- `CREATE SEQUENCE` and `ALTER SEQUENCE ... OWNED BY` emit no SQLite DDL. Sequences aren't modeled on SQLite.
+- `DEFAULT nextval('seq')` on a `serial` or identity primary key becomes `INTEGER PRIMARY KEY AUTOINCREMENT`. On any other column the default is removed, so a `NOT NULL` column fails on the next insert that doesn't supply a value.
+
+**Workaround for `default auth.uid()`:** drop the default, pass `user_id` from the client on insert, and enforce ownership with a `WITH CHECK` policy instead:
+
+```sql
+-- Instead of:
+user_id uuid not null default auth.uid() references auth.users (id),
+
+-- Use:
+user_id uuid not null references auth.users (id),
+-- and rely on a WITH CHECK policy to bind the row to the caller.
+```
+
+This limitation is SQLite-only. On PGlite/Postgres, `auth.uid()` works as a column default natively: the function is bootstrapped as part of connection setup.
+
+## CHECK constraint functions
+
+`CHECK (...)` expressions are translated and then evaluated by SQLite itself at write time. Function calls use the same allow-list as column defaults.
+
+**Works and is enforced:** `length`, `lower`, `upper`, `ltrim`, `rtrim`, plus literal/operator comparisons. For example, `CHECK (email = lower(email))` rejects `'Upper@X.com'`.
+
+**Rejected at translation time:**
+
+- `char_length`, `character_length`: `Function call "char_length" not supported`. Use `length`.
+- `trim(x)`, `btrim(x)`: `Function call "btrim" not supported` (Postgres parses 1-argument `trim` as `btrim`). Use `ltrim(rtrim(x))`.
+- `regexp_replace`, custom functions, extension scalars: `Function call "<name>" not supported`.
+- Regex `~`: `Operator "~" is not supported in SQLite`.
+- `LIKE`: `Operator "~~" is not supported in SQLite`. SQLite has `LIKE`, but the DDL translator doesn't map it inside `CHECK`.
+
+One rejected function or operator fails the whole `CREATE TABLE` statement, not only that constraint, so the migration doesn't apply.
+
+<Aside type="caution">
+Known issue: `CHECK (created <= now())` translates to `datetime('now')` and `CREATE TABLE` succeeds. SQLite then rejects every `INSERT` and `UPDATE` on the table with `non-deterministic use of datetime() in a CHECK constraint`, also for values that pass the check. Don't use `now()` or `current_timestamp` in `CHECK` on SQLite.
+</Aside>
+
+**Workaround:** validate richer rules in the app layer or via an RLS `WITH CHECK` predicate.
+
+On the PGlite/Postgres path, all of these functions work exactly as they do in upstream Postgres, since `CHECK` constraints run as real Postgres expressions there.
+
+## Trigger and index names
+
+Postgres scopes trigger names per table and index names per schema. SQLite does not, so the translated physical names preserve those scopes:
+
+- Triggers include the folded table name. A trigger named `set_updated_at` on `profiles` becomes `profiles_set_updated_at`.
+- Explicit indexes include the folded schema, not the table. In the default mapping, `public.ix` becomes `ix` and `auth.ix` becomes `"auth.ix"`. With the `snake_case` schema mapping, they become `public__ix` and `auth__ix`.
+- Unnamed indexes receive a Postgres-style `<table>_<key-labels>_idx` name. Conflicts receive numeric suffixes.
+
+`DROP TRIGGER` and `DROP INDEX` use the same mapping as creation. PostgreSQL-facing introspection returns the logical names; raw SQLite introspection and stored DDL retain the physical names.
+
+<Aside type="caution">
+This physical naming change is breaking for pre-1.0 SQLite databases. Recreate the local database after upgrading so legacy unprefixed triggers and indexes do not remain alongside the mapped objects.
+</Aside>
+
+## SQLite version floor
+
+Introspection (the schema snapshot query that runs on every request) uses `ORDER BY` inside an aggregate (`json_group_array(x ORDER BY y)`), which requires **SQLite 3.44.0 or newer**. Below that, every `select`/`insert`/`update`/`delete` fails with `near "ORDER": syntax error`, not just migrations. `node:sqlite`, `bun:sqlite`, and the Cloudflare workerd target all meet this floor on current releases; the one historical hazard is Bun 1.1.x, which shipped SQLite 3.43.2 (below the floor) before Bun 1.3.x moved to 3.51.0.
+
+## See also
+
+- [Row Level Security](/database/rls): how `CREATE POLICY` and `ENABLE ROW LEVEL SECURITY` DDL are extracted rather than emitted as SQLite DDL.
+- [Functions & triggers](/database/functions-triggers): the trigger-function-body translation this page's DDL translator feeds into.
+- [Backends](/database/backends): none of this applies on PGlite/Postgres, your DDL runs unmodified there.
+- [Supabase declarative schemas](https://supabase.com/docs/guides/local-development/declarative-database-schemas): the upstream workflow this DDL is authored for before translation.
+- [Postgres data types](https://www.postgresql.org/docs/current/datatype.html): the upstream reference for every type mapped above.

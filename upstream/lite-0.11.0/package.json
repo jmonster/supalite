@@ -1,0 +1,222 @@
+{
+   "name": "@supabase/lite",
+   "version": "0.11.0",
+   "description": "Lightweight TypeScript-native Supabase implementation on SQLite (alpha). PostgREST + GoTrue compatible — use @supabase/supabase-js as-is.",
+   "license": "Apache-2.0",
+   "type": "module",
+   "bin": {
+      "lite": "./dist/cli/index.js"
+   },
+   "main": "./dist/index.js",
+   "types": "./dist/index.d.ts",
+   "publishConfig": {
+      "access": "public"
+   },
+   "exports": {
+      ".": {
+         "types": "./dist/index.d.ts",
+         "import": "./dist/index.js"
+      },
+      "./sqlite": {
+         "bun": {
+            "types": "./dist/db/bun/index.d.ts",
+            "import": "./dist/db/bun/index.js"
+         },
+         "node": {
+            "types": "./dist/db/node/index.d.ts",
+            "import": "./dist/db/node/index.js"
+         },
+         "workerd": {
+            "types": "./dist/db/workerd/index.d.ts",
+            "import": "./dist/db/workerd/index.js"
+         },
+         "browser": {
+            "types": "./dist/db/browser/index.d.ts",
+            "import": "./dist/db/browser/index.js"
+         },
+         "default": {
+            "types": "./dist/db/fallback.d.ts",
+            "import": "./dist/db/fallback.js"
+         }
+      },
+      "./workerd": {
+         "types": "./dist/db/workerd/index.d.ts",
+         "import": "./dist/db/workerd/index.js"
+      },
+      "./postgres": {
+         "types": "./dist/db/postgres/PostgresConnection.d.ts",
+         "import": "./dist/db/postgres/PostgresConnection.js"
+      },
+      "./pglite": {
+         "types": "./dist/db/postgres/pglite/PgliteConnection.d.ts",
+         "import": "./dist/db/postgres/pglite/PgliteConnection.js"
+      },
+      "./libsql": {
+         "types": "./dist/db/libsql/index.d.ts",
+         "import": "./dist/db/libsql/index.js"
+      },
+      "./vite": {
+         "types": "./dist/vite/index.d.ts",
+         "import": "./dist/vite/index.js"
+      },
+      "./studio": {
+         "types": "./dist/studio/index.d.ts",
+         "import": "./dist/studio/index.js"
+      },
+      "./studio.css": "./dist/studio/index.css",
+      "./cli": {
+         "types": "./dist/cli/lib.d.ts",
+         "import": "./dist/cli/lib.js"
+      },
+      "./dist/manifest.json": "./dist/static/.vite/manifest.json",
+      "./static/*": "./dist/static/*"
+   },
+   "files": [
+      "dist",
+      "LICENSE",
+      "README.md",
+      "STATUS.md",
+      "UPGRADE.md",
+      "LIMITATIONS.md",
+      "PATTERNS.md",
+      "FEATURES.md",
+      "skills",
+      "docs",
+      "!dist/*.tsbuildinfo",
+      "!dist/*.map",
+      "!dist/**/*.map",
+      "!dist/metafile*",
+      "!dist/**/metafile*"
+   ],
+   "scripts": {
+      "test": "bun test --bail",
+      "test:all": "bun run test:low && bun run vitest && bun run test:spec:status && bun run test:spec:auth && bun run test:spec:storage",
+      "test:low": "bun run test/run-low-memory.ts",
+      "test:coverage": "bun test --bail --coverage --coverage-reporter=text --coverage-reporter=lcov",
+      "vitest": "vitest run",
+      "format": "biome format --write .",
+      "lint": "biome check --write .",
+      "test:postgrest": "bun test postgrest/suite/postgres.test.ts",
+      "test:gotrue": "GOTRUE_TEST_SUITE=1 bun test auth/gotrue-suite.postgres.test.ts",
+      "corpus:sync": "bash test/corpus/sync.sh",
+      "corpus": "bun run test/corpus/run.ts",
+      "test:spec:status": "RUN_SPEC=1 bun run test/supabase-spec/rest/all.ts",
+      "test:spec:analyze": "bun run test/supabase-spec/rest/analyze.ts",
+      "test:spec:analyze:sqlite": "bun run test/supabase-spec/rest/analyze.ts --backend=sqlite",
+      "test:spec:analyze:pglite": "bun run test/supabase-spec/rest/analyze.ts --backend=pglite",
+      "test:spec:analyze:postgres": "bun run test/supabase-spec/rest/analyze.ts --backend=postgres",
+      "test:spec:analyze:sqlite-postgres": "bun run test/supabase-spec/rest/analyze.ts --backend=sqlite-postgres",
+      "test:spec:auth": "RUN_SPEC=1 bun run test/supabase-spec/auth/all.ts",
+      "test:spec:auth:postgres": "RUN_SPEC=1 bun test test/supabase-spec/auth/postgres.test.ts",
+      "test:spec:auth:pglite": "RUN_SPEC=1 bun test test/supabase-spec/auth/pglite.test.ts",
+      "test:spec:auth:sqlite": "RUN_SPEC=1 bun test test/supabase-spec/auth/sqlite.test.ts",
+      "test:spec:auth:sqlite-postgres": "RUN_SPEC=1 bun test test/supabase-spec/auth/sqlite-postgres.test.ts",
+      "test:spec:auth:analyze": "bun run test/supabase-spec/auth/analyze.ts",
+      "test:spec:auth:analyze:sqlite": "bun run test/supabase-spec/auth/analyze.ts --backend=sqlite",
+      "test:spec:auth:analyze:pglite": "bun run test/supabase-spec/auth/analyze.ts --backend=pglite",
+      "test:spec:auth:analyze:postgres": "bun run test/supabase-spec/auth/analyze.ts --backend=postgres",
+      "test:spec:auth:analyze:sqlite-postgres": "bun run test/supabase-spec/auth/analyze.ts --backend=sqlite-postgres",
+      "test:spec:storage": "RUN_SPEC=1 bun run test/supabase-spec/storage/all.ts",
+      "test:spec:storage:analyze": "bun run test/supabase-spec/storage/analyze.ts",
+      "test:spec:storage:postgres": "RUN_SPEC=1 bun test test/supabase-spec/storage/postgres.test.ts",
+      "test:spec:storage:pglite": "RUN_SPEC=1 bun test test/supabase-spec/storage/pglite.test.ts",
+      "test:spec:storage:sqlite": "RUN_SPEC=1 bun test test/supabase-spec/storage/sqlite.test.ts",
+      "test:spec:storage:sqlite-postgres": "RUN_SPEC=1 bun test test/supabase-spec/storage/sqlite-postgres.test.ts",
+      "test:phenotype:storage": "bun run test:spec:storage:postgres",
+      "dev": "vite",
+      "typecheck": "tsc --project tsconfig.check.json",
+      "build": "bun run build.ts",
+      "build:all": "bun run build:static && bun run build:studio && bun run build.ts --types --minify",
+      "build:studio": "bun run ../packages/studio/build.ts",
+      "build:static": "vite build",
+      "check:bundle": "bun run internal/bundle-budget.ts",
+      "watch:static": "vite build --watch",
+      "dev:bun": "bun run --hot dev/bun/bun.dev.ts",
+      "debug:bun": "bun run --hot dev/debug.ts",
+      "debug:node": "tsx --watch dev/debug.ts",
+      "cli": "LOCAL=1 bun src/cli/index.ts",
+      "docs:generate": "bun run internal/extract.ts",
+      "docs:index": "bun run internal/package-docs.ts",
+      "smoke:pack": "bun run internal/smoke-pack.ts",
+      "prepack": "bun run internal/package-readme.ts prepare",
+      "postpack": "bun run internal/package-readme.ts cleanup",
+      "prepublishOnly": "npm whoami && bun run typecheck && bun run test && bun run build:all && bun run smoke:pack -- --no-build"
+   },
+   "dependencies": {
+      "commander": "^14.0.3",
+      "@commander-js/extra-typings": "^14.0.0",
+      "@electric-sql/pglite": "0.4.5",
+      "@hono/node-server": "^1.19.9",
+      "@supabase/pg-delta": "1.0.0-alpha.34",
+      "@supabase/supabase-js": "^2.97.0",
+      "@sentry/node": "^10.51.0",
+      "@vercel/detect-agent": "^1.2.3",
+      "dotenv": "^17.3.1",
+      "jose": "^6.1.3",
+      "jsonv-ts": "^0.10.1",
+      "libpg-query": "17.7.3",
+      "kysely": "^0.28.11",
+      "kysely-generic-sqlite": "^1.2.1",
+      "kysely-postgres-js": "^3.0.0",
+      "pgsql-parser": "17.9.15",
+      "pgsql-deparser": "17.18.3",
+      "bcryptjs": "^3.0.3",
+      "chokidar": "^5.0.0",
+      "nodemailer": "^9.0.5",
+      "uuid": "^13.0.0"
+   },
+   "peerDependencies": {
+      "@libsql/client": "^0.17.4",
+      "@supabase/supabase-js": ">=2.90.0",
+      "postgres": "^3.4.8",
+      "vite": "^5.0.0 || ^6.0.0 || ^7.0.0 || ^8.0.0",
+      "react": ">=19.0.0",
+      "react-dom": ">=19.0.0"
+   },
+   "peerDependenciesMeta": {
+      "@libsql/client": {
+         "optional": true
+      },
+      "vite": {
+         "optional": true
+      },
+      "postgres": {
+         "optional": true
+      },
+      "react": {
+         "optional": true
+      },
+      "react-dom": {
+         "optional": true
+      }
+   },
+   "devDependencies": {
+      "@clack/prompts": "^1.1.0",
+      "@libsql/client": "^0.17.4",
+      "@cloudflare/vitest-pool-workers": "^0.9.0",
+      "@cloudflare/workers-types": "^4.20260301.1",
+      "@hono/vite-dev-server": "^0.25.0",
+      "@pgsql/types": "^17.6.2",
+      "@pgsql/utils": "^17.8.15",
+      "@sqlite.org/sqlite-wasm": "^3.51.2-build7",
+      "@types/bcryptjs": "^3.0.0",
+      "@types/nodemailer": "^8.0.1",
+      "aws4fetch": "^1.0.20",
+      "bun-plugin-tailwind": "^0.1.2",
+      "dedent": "^1.7.2",
+      "fs-extra": "^11.3.3",
+      "hono": "^4.12.2",
+      "ink": "^6.8.0",
+      "open": "^11.0.0",
+      "pgserve": "^1.1.6",
+      "picocolors": "^1.1.1",
+      "react": "^19.2.0",
+      "react-dom": "^19.2.0",
+      "smol-toml": "^1.6.0",
+      "sql-formatter": "^15.7.2",
+      "tinyglobby": "^0.2.15",
+      "tsx": "^4.21.0",
+      "vitest": "^3.2.0",
+      "wouter": "^3.9.0"
+   }
+}
