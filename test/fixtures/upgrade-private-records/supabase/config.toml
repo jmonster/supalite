@@ -1,0 +1,17 @@
+project_id = "upgrade-private-records"
+[db]
+driver = "sqlite-postgres"
+url = "file:./supabase/fixture.db"
+[auth]
+enabled = true
+jwt_secret = "fixture-only-c2864fe5b0917280c02c6b38ad786d63"
+publishable_key = "sb_publishable_upgrade_fixture_only"
+site_url = "http://127.0.0.1:3000"
+enable_signup = true
+[auth.email]
+enable_signup = true
+enable_confirmations = false
+[storage]
+enabled = false
+[realtime]
+enabled = false
