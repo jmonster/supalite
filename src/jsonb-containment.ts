@@ -1,5 +1,6 @@
 import { sql, type Expression, type RawBuilder } from "kysely";
 import { jsonbObjectFastPath } from "./jsonb-object-fast-path.js";
+import { jsonbShallow } from "./jsonb-shallow.js";
 
 /** JSON values supported by the JavaScript/PostgREST boundary. */
 export type Json =
@@ -147,6 +148,8 @@ export function jsonbContainment(
     const fast = jsonbObjectFastPath(input, filter, parameter);
     if (fast) return fast;
   }
+  const shallow = jsonbShallow(input, filter, direction, parameter);
+  if (shallow) return shallow;
   const isType = (type: string): Predicate =>
     sql<boolean>`n.type = ${sql.lit(type)}`;
   const nodes = sql.ref("__jsonb_nodes");
