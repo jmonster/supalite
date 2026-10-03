@@ -4,6 +4,7 @@ import { chmod, cp, lstat, mkdir, readFile, readdir, rm, writeFile } from "node:
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { patchRepeatedFilters } from "./patch-repeated-filters.mjs";
+import { patchJsonbContainment } from "./patch-jsonb-containment.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const manifest = JSON.parse(
@@ -109,7 +110,8 @@ await verifyDistribution(target);
 
 const input = await readFile(resolve(source, "dist/index.js"), "utf8");
 const mergerUrl = pathToFileURL(resolve(root, "dist/merge-filters.js")).href;
-const output = patchRepeatedFilters(input, mergerUrl);
+const adapterUrl = pathToFileURL(resolve(root, "dist/lite-adapter.js")).href;
+const output = patchJsonbContainment(patchRepeatedFilters(input, mergerUrl), adapterUrl);
 const patchedTarget = resolve(root, ".generated/patched/node_modules/@supabase/lite");
 await mkdir(dirname(patchedTarget), { recursive: true });
 await rm(patchedTarget, { recursive: true, force: true });
@@ -125,7 +127,7 @@ await writeFile(
     source: "upstream/lite-0.11.0",
     files: paths.length,
     patchedIndexSha256: createHash("sha256").update(output).digest("hex"),
-    patches: 2,
+    patches: 6,
   }, null, 2) + "\n",
 );
-console.log(`Verified ${baseline.name} ${baseline.version} (${paths.length} unmodified files) and prepared repeated-filter patch (2 parser seams)`);
+console.log(`Verified ${baseline.name} ${baseline.version} (${paths.length} unmodified files) and prepared patched package (6 integration seams)`);
