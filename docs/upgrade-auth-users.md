@@ -41,4 +41,26 @@ Tests create real Lite Auth users, invoke the original bundled exporter with and
 
 Additional tests check multiple users, pending nonempty token values and SQL quoting, preservation of nullable unique contacts, source-row immutability, unchanged rehearsal/non-user export SQL, and refusal to patch unknown artifacts.
 
-The published package does not expose the exporter as a public API. The test-only loader verifies the complete bundle and extracts its self-contained exporter closure, including its original conversion helpers and constant tables. It does not substitute a new exporter. This provides executable SQL-level coverage; PGlite does not run GoTrue itself. A corrected full-stack qualification is required before claiming successful end-to-end sign-in after migration.
+The published package does not expose the exporter as a public API. The test-only loader verifies the complete bundle and extracts its self-contained exporter closure, including its original conversion helpers and constant tables. It does not substitute a new exporter. This provides executable SQL-level coverage; PGlite does not run GoTrue itself. The separate real-stack qualification below verifies the corrected migration through GoTrue and the Supabase API.
+
+## Real-stack qualification
+
+The same fixture that failed fresh sign-in on the published exporter passed with this correction:
+
+- [Published exporter: migration completed, fresh sign-in failed](https://github.com/jmonster/supalite/actions/runs/37150789045), qualification commit `071d9749379568e9e0a77a17c8c8484d92a7cef4`
+- [Corrected exporter: complete before/after SDK contract passed](https://github.com/jmonster/supalite/actions/runs/37152316112), qualification commit `ceab795a23541d5f972587b0f5df56bb5a3d3ea1`
+
+The successful run used Node.js 24.21.0, the verified Lite 0.11.0 distribution with this auth-export integration, supabase-js 2.117.2, and Supabase CLI 2.98.1 on a Docker-capable Ubuntu 24.04 runner. The published local upgrade runner configures PostgreSQL major version 15; CLI 2.98.1 pins GoTrue 2.188.1. The source used Lite's `sqlite-postgres` backend. These version and fixture details bound the result.
+
+One real-stack test passed in 129.8 seconds, with zero failures or skips. It checked:
+
+- Fresh password sign-in after migration, with unchanged user and identity IDs
+- Preserved owner-private records and JSONB values
+- Enabled native PostgreSQL RLS, anonymous isolation and cross-owner read/write isolation
+- Foreign-key rejection and newly generated serial IDs above the migrated high-water marks
+- Authoritative recorded migration SQL despite an edited applied migration file
+- An unchanged source config, a separate disposable target directory, and no transferred sessions or refresh tokens
+
+The source fixture and shared SDK assertions were unchanged between the failing and successful runs. Only the actual upgrade invocation selected the corrected auth-export package. The test's teardown and the workflow's independent cleanup both completed successfully. No hosted Supabase project, real-user credentials, or production data were involved.
+
+This qualifies the synthetic SQLite-to-local-Supabase path above. It does not establish hosted Management API behavior, session transfer, Storage or Realtime migration, or compatibility with every source schema and data set.
