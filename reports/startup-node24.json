@@ -1,0 +1,1016 @@
+{
+  "formatVersion": 1,
+  "complete": true,
+  "startedAt": "2026-10-03T20:00:03.785Z",
+  "environment": {
+    "node": "v24.19.0",
+    "os": "linux",
+    "architecture": "x64",
+    "kernel": "6.18.44",
+    "cpu": "AMD EPYC 9V74 80-Core Processor",
+    "availableParallelism": 9,
+    "loadAverageAtStart": [
+      2.79,
+      3.04,
+      1.88
+    ],
+    "lite": "0.11.0",
+    "supabaseJs": "2.117.2",
+    "loadAverageAtEnd": [
+      2.65,
+      3.01,
+      1.88
+    ]
+  },
+  "configuration": {
+    "samples": 5,
+    "budgetMs": 20000,
+    "warmRequestsPerProcess": 5
+  },
+  "fixture": {
+    "sha256": "8a1d79acaac740a4b63503032f07ebccdff5716fcf9b90ecec9496223e414417",
+    "userTables": 2,
+    "taskRows": 200,
+    "ownerCount": 2,
+    "expectedVisibleOpenTasks": 80,
+    "auth": true,
+    "storage": false,
+    "database": ":memory:"
+  },
+  "artifact": {
+    "tarballSha256": "f8b399ab700ed0ae34a44a38112c86be0fe33cf3e671473799048afa0d496adf",
+    "publishedPackageBytes": 4317275,
+    "publishedPackageFiles": 77,
+    "coreAndNodeEntryBytes": 554043,
+    "dependencyFootprintIncludedInCoreEntryBytes": false,
+    "pretranslatedSchemaBytes": 68836,
+    "preparation": {
+      "entries": 2,
+      "bytes": 68836,
+      "buildMs": 237.63629
+    },
+    "translatorHelperBytes": 3596,
+    "compileCache": {
+      "bytes": 1437728,
+      "files": 406
+    },
+    "installedDependencyTree": {
+      "bytes": 145495480,
+      "files": 11099
+    }
+  },
+  "observations": [
+    {
+      "mode": "disabled",
+      "repetition": "initial",
+      "phaseMs": {
+        "import": 166.36489,
+        "create": 4.747261000000009,
+        "systemSchema": 40.97272100000001,
+        "userSchema": 18.518133999999975,
+        "seed": 5.513882000000024,
+        "client": 6.366442000000006,
+        "firstRequest": 36.48599299999995
+      },
+      "rssBytes": {
+        "beforeImport": 39186432,
+        "import": 71692288,
+        "create": 72347648,
+        "systemSchema": 156983296,
+        "userSchema": 210853888,
+        "seed": 226304000,
+        "client": 243081216,
+        "firstRequest": 348069888
+      },
+      "schemaReadyMs": 230.67517400000003,
+      "importToFirstResponseMs": 278.969323,
+      "maxRssBytesAtFirstResponse": 350035968,
+      "cpuMsAtFirstResponse": {
+        "user": 488.139,
+        "system": 124.611
+      },
+      "involuntaryContextSwitchesAtFirstResponse": 3,
+      "compileCacheEnabled": false,
+      "pretranslated": false,
+      "verifiedRows": 80,
+      "responseSha256": "44b714605a6a6d0b747315d2057858213ff8c247dbf29303ec0ab124b95826a7",
+      "sqliteVersion": "3.53.3",
+      "warmRequestMs": [
+        6.939793000000009,
+        4.8707560000000285,
+        4.478176000000019,
+        4.467119000000025,
+        3.3861459999999965
+      ],
+      "anonymousRows": 0,
+      "rlsWriteChecks": true,
+      "customRoleChecks": true,
+      "spawnToVerifiedResponseMs": 335.216407,
+      "spawnToExitMs": 537.9942599999999
+    },
+    {
+      "mode": "empty",
+      "repetition": "populate",
+      "phaseMs": {
+        "import": 173.07434800000001,
+        "create": 4.849683999999996,
+        "systemSchema": 36.792573000000004,
+        "userSchema": 17.582779000000016,
+        "seed": 5.556906999999967,
+        "client": 6.298800000000028,
+        "firstRequest": 34.15860699999996
+      },
+      "rssBytes": {
+        "beforeImport": 39571456,
+        "import": 72851456,
+        "create": 74031104,
+        "systemSchema": 130445312,
+        "userSchema": 191082496,
+        "seed": 205238272,
+        "client": 219709440,
+        "firstRequest": 319848448
+      },
+      "schemaReadyMs": 232.366986,
+      "importToFirstResponseMs": 278.313698,
+      "maxRssBytesAtFirstResponse": 322994176,
+      "cpuMsAtFirstResponse": {
+        "user": 470.863,
+        "system": 117.491
+      },
+      "involuntaryContextSwitchesAtFirstResponse": 37,
+      "compileCacheEnabled": true,
+      "pretranslated": false,
+      "verifiedRows": 80,
+      "responseSha256": "44b714605a6a6d0b747315d2057858213ff8c247dbf29303ec0ab124b95826a7",
+      "sqliteVersion": "3.53.3",
+      "warmRequestMs": [
+        5.714463000000023,
+        4.071374999999989,
+        4.085816999999963,
+        3.2712940000000117,
+        3.1877979999999866
+      ],
+      "anonymousRows": 0,
+      "rlsWriteChecks": true,
+      "customRoleChecks": true,
+      "spawnToVerifiedResponseMs": 331.1576960000001,
+      "spawnToExitMs": 570.67726
+    },
+    {
+      "mode": "disabled",
+      "repetition": 1,
+      "phaseMs": {
+        "import": 179.636879,
+        "create": 5.245768999999996,
+        "systemSchema": 39.79758699999999,
+        "userSchema": 20.13220799999999,
+        "seed": 7.079233000000045,
+        "client": 6.456507999999985,
+        "firstRequest": 38.03647599999999
+      },
+      "rssBytes": {
+        "beforeImport": 38666240,
+        "import": 71061504,
+        "create": 71979008,
+        "systemSchema": 126099456,
+        "userSchema": 185688064,
+        "seed": 204169216,
+        "client": 222490624,
+        "firstRequest": 326823936
+      },
+      "schemaReadyMs": 244.878292,
+      "importToFirstResponseMs": 296.38466,
+      "maxRssBytesAtFirstResponse": 330493952,
+      "cpuMsAtFirstResponse": {
+        "user": 549.798,
+        "system": 131.17
+      },
+      "involuntaryContextSwitchesAtFirstResponse": 21,
+      "compileCacheEnabled": false,
+      "pretranslated": false,
+      "verifiedRows": 80,
+      "responseSha256": "44b714605a6a6d0b747315d2057858213ff8c247dbf29303ec0ab124b95826a7",
+      "sqliteVersion": "3.53.3",
+      "warmRequestMs": [
+        5.804748000000018,
+        4.254459999999995,
+        4.281199999999956,
+        3.089339999999993,
+        3.363892999999962
+      ],
+      "anonymousRows": 0,
+      "rlsWriteChecks": true,
+      "customRoleChecks": true,
+      "spawnToVerifiedResponseMs": 366.75451099999987,
+      "spawnToExitMs": 574.9343529999999
+    },
+    {
+      "mode": "reused",
+      "repetition": 1,
+      "phaseMs": {
+        "import": 114.75575299999998,
+        "create": 6.343187,
+        "systemSchema": 36.81724000000003,
+        "userSchema": 17.423811,
+        "seed": 5.559139999999985,
+        "client": 6.25683699999999,
+        "firstRequest": 33.582582
+      },
+      "rssBytes": {
+        "beforeImport": 39055360,
+        "import": 72167424,
+        "create": 74002432,
+        "systemSchema": 142073856,
+        "userSchema": 201699328,
+        "seed": 217296896,
+        "client": 237506560,
+        "firstRequest": 341708800
+      },
+      "schemaReadyMs": 175.405349,
+      "importToFirstResponseMs": 220.73854999999998,
+      "maxRssBytesAtFirstResponse": 344854528,
+      "cpuMsAtFirstResponse": {
+        "user": 452.054,
+        "system": 96.116
+      },
+      "involuntaryContextSwitchesAtFirstResponse": 27,
+      "compileCacheEnabled": true,
+      "pretranslated": false,
+      "verifiedRows": 80,
+      "responseSha256": "44b714605a6a6d0b747315d2057858213ff8c247dbf29303ec0ab124b95826a7",
+      "sqliteVersion": "3.53.3",
+      "warmRequestMs": [
+        5.6675820000000385,
+        3.9677689999999757,
+        4.700620000000015,
+        3.436281000000008,
+        3.8760619999999903
+      ],
+      "anonymousRows": 0,
+      "rlsWriteChecks": true,
+      "customRoleChecks": true,
+      "spawnToVerifiedResponseMs": 272.9425309999999,
+      "spawnToExitMs": 467.86980199999994
+    },
+    {
+      "mode": "pretranslated",
+      "repetition": 1,
+      "phaseMs": {
+        "import": 170.98829,
+        "create": 13.080168000000015,
+        "systemSchema": 6.36935299999999,
+        "userSchema": 16.948155000000014,
+        "seed": 6.835502999999989,
+        "client": 11.150351,
+        "firstRequest": 34.107969000000026
+      },
+      "rssBytes": {
+        "beforeImport": 39321600,
+        "import": 71602176,
+        "create": 75927552,
+        "systemSchema": 78024704,
+        "userSchema": 83267584,
+        "seed": 84709376,
+        "client": 86675456,
+        "firstRequest": 88903680
+      },
+      "schemaReadyMs": 207.43527999999998,
+      "importToFirstResponseMs": 259.47978900000004,
+      "maxRssBytesAtFirstResponse": 88903680,
+      "cpuMsAtFirstResponse": {
+        "user": 368.874,
+        "system": 35.473
+      },
+      "involuntaryContextSwitchesAtFirstResponse": 9,
+      "compileCacheEnabled": false,
+      "pretranslated": true,
+      "verifiedRows": 80,
+      "responseSha256": "44b714605a6a6d0b747315d2057858213ff8c247dbf29303ec0ab124b95826a7",
+      "sqliteVersion": "3.53.3",
+      "warmRequestMs": [
+        6.17330800000002,
+        4.486956000000021,
+        3.2186120000000074,
+        3.3893879999999967,
+        2.915957999999989
+      ],
+      "anonymousRows": 0,
+      "rlsWriteChecks": true,
+      "customRoleChecks": true,
+      "spawnToVerifiedResponseMs": 312.955062,
+      "spawnToExitMs": 356.786349
+    },
+    {
+      "mode": "reused",
+      "repetition": 2,
+      "phaseMs": {
+        "import": 116.42534899999998,
+        "create": 5.261139000000014,
+        "systemSchema": 38.80864600000001,
+        "userSchema": 17.980806,
+        "seed": 5.527468999999996,
+        "client": 6.5376349999999945,
+        "firstRequest": 34.103722999999974
+      },
+      "rssBytes": {
+        "beforeImport": 39055360,
+        "import": 73375744,
+        "create": 74424320,
+        "systemSchema": 157962240,
+        "userSchema": 210128896,
+        "seed": 223629312,
+        "client": 244338688,
+        "firstRequest": 344498176
+      },
+      "schemaReadyMs": 178.54647599999998,
+      "importToFirstResponseMs": 224.64476699999997,
+      "maxRssBytesAtFirstResponse": 347250688,
+      "cpuMsAtFirstResponse": {
+        "user": 460.478,
+        "system": 96.552
+      },
+      "involuntaryContextSwitchesAtFirstResponse": 31,
+      "compileCacheEnabled": true,
+      "pretranslated": false,
+      "verifiedRows": 80,
+      "responseSha256": "44b714605a6a6d0b747315d2057858213ff8c247dbf29303ec0ab124b95826a7",
+      "sqliteVersion": "3.53.3",
+      "warmRequestMs": [
+        6.983104000000026,
+        5.459926999999993,
+        4.746315999999979,
+        5.420777999999984,
+        4.400787000000037
+      ],
+      "anonymousRows": 0,
+      "rlsWriteChecks": true,
+      "customRoleChecks": true,
+      "spawnToVerifiedResponseMs": 272.02946999999995,
+      "spawnToExitMs": 480.0819550000001
+    },
+    {
+      "mode": "pretranslated",
+      "repetition": 2,
+      "phaseMs": {
+        "import": 164.21801399999998,
+        "create": 11.619025000000022,
+        "systemSchema": 5.68663699999999,
+        "userSchema": 12.794700000000006,
+        "seed": 5.325054999999992,
+        "client": 5.551275000000004,
+        "firstRequest": 32.13738999999998
+      },
+      "rssBytes": {
+        "beforeImport": 39190528,
+        "import": 71680000,
+        "create": 73383936,
+        "systemSchema": 74170368,
+        "userSchema": 78364672,
+        "seed": 79020032,
+        "client": 79544320,
+        "firstRequest": 83476480
+      },
+      "schemaReadyMs": 194.372888,
+      "importToFirstResponseMs": 237.33209599999998,
+      "maxRssBytesAtFirstResponse": 83607552,
+      "cpuMsAtFirstResponse": {
+        "user": 318.743,
+        "system": 58.868
+      },
+      "involuntaryContextSwitchesAtFirstResponse": 7,
+      "compileCacheEnabled": false,
+      "pretranslated": true,
+      "verifiedRows": 80,
+      "responseSha256": "44b714605a6a6d0b747315d2057858213ff8c247dbf29303ec0ab124b95826a7",
+      "sqliteVersion": "3.53.3",
+      "warmRequestMs": [
+        7.11210699999998,
+        4.2937069999999835,
+        3.6932350000000156,
+        3.4651329999999803,
+        3.237329999999986
+      ],
+      "anonymousRows": 0,
+      "rlsWriteChecks": true,
+      "customRoleChecks": true,
+      "spawnToVerifiedResponseMs": 296.05226700000003,
+      "spawnToExitMs": 341.138148
+    },
+    {
+      "mode": "disabled",
+      "repetition": 2,
+      "phaseMs": {
+        "import": 157.71461899999997,
+        "create": 6.005617000000001,
+        "systemSchema": 40.54701600000001,
+        "userSchema": 17.398871999999983,
+        "seed": 5.743303000000026,
+        "client": 6.703494999999975,
+        "firstRequest": 36.243785
+      },
+      "rssBytes": {
+        "beforeImport": 39190528,
+        "import": 69935104,
+        "create": 72163328,
+        "systemSchema": 149073920,
+        "userSchema": 190201856,
+        "seed": 203046912,
+        "client": 223641600,
+        "firstRequest": 322732032
+      },
+      "schemaReadyMs": 221.735478,
+      "importToFirstResponseMs": 270.356707,
+      "maxRssBytesAtFirstResponse": 325746688,
+      "cpuMsAtFirstResponse": {
+        "user": 512.48,
+        "system": 101.833
+      },
+      "involuntaryContextSwitchesAtFirstResponse": 9,
+      "compileCacheEnabled": false,
+      "pretranslated": false,
+      "verifiedRows": 80,
+      "responseSha256": "44b714605a6a6d0b747315d2057858213ff8c247dbf29303ec0ab124b95826a7",
+      "sqliteVersion": "3.53.3",
+      "warmRequestMs": [
+        6.27286799999996,
+        8.448364000000026,
+        11.421758000000011,
+        5.985325999999986,
+        3.712693999999999
+      ],
+      "anonymousRows": 0,
+      "rlsWriteChecks": true,
+      "customRoleChecks": true,
+      "spawnToVerifiedResponseMs": 323.979906,
+      "spawnToExitMs": 550.9622679999998
+    },
+    {
+      "mode": "pretranslated",
+      "repetition": 3,
+      "phaseMs": {
+        "import": 162.26453999999998,
+        "create": 12.76186100000001,
+        "systemSchema": 6.337645000000009,
+        "userSchema": 17.15964299999999,
+        "seed": 6.940159999999992,
+        "client": 11.797402000000005,
+        "firstRequest": 33.05143300000003
+      },
+      "rssBytes": {
+        "beforeImport": 39321600,
+        "import": 71278592,
+        "create": 76128256,
+        "systemSchema": 77963264,
+        "userSchema": 85041152,
+        "seed": 86089728,
+        "client": 88317952,
+        "firstRequest": 90284032
+      },
+      "schemaReadyMs": 198.596408,
+      "importToFirstResponseMs": 250.31268400000002,
+      "maxRssBytesAtFirstResponse": 90415104,
+      "cpuMsAtFirstResponse": {
+        "user": 335.856,
+        "system": 59.444
+      },
+      "involuntaryContextSwitchesAtFirstResponse": 5,
+      "compileCacheEnabled": false,
+      "pretranslated": true,
+      "verifiedRows": 80,
+      "responseSha256": "44b714605a6a6d0b747315d2057858213ff8c247dbf29303ec0ab124b95826a7",
+      "sqliteVersion": "3.53.3",
+      "warmRequestMs": [
+        4.6893910000000005,
+        3.3073850000000107,
+        2.857409999999959,
+        2.9601839999999697,
+        2.705011000000013
+      ],
+      "anonymousRows": 0,
+      "rlsWriteChecks": true,
+      "customRoleChecks": true,
+      "spawnToVerifiedResponseMs": 305.75827299999946,
+      "spawnToExitMs": 343.56808999999976
+    },
+    {
+      "mode": "disabled",
+      "repetition": 3,
+      "phaseMs": {
+        "import": 151.836104,
+        "create": 6.0672289999999975,
+        "systemSchema": 37.148143000000005,
+        "userSchema": 16.86730399999999,
+        "seed": 5.848570999999993,
+        "client": 6.443955000000017,
+        "firstRequest": 34.493628
+      },
+      "rssBytes": {
+        "beforeImport": 39321600,
+        "import": 70053888,
+        "create": 72019968,
+        "systemSchema": 131358720,
+        "userSchema": 190337024,
+        "seed": 207376384,
+        "client": 227037184,
+        "firstRequest": 330383360
+      },
+      "schemaReadyMs": 211.99425399999998,
+      "importToFirstResponseMs": 258.704934,
+      "maxRssBytesAtFirstResponse": 333266944,
+      "cpuMsAtFirstResponse": {
+        "user": 467.184,
+        "system": 112.889
+      },
+      "involuntaryContextSwitchesAtFirstResponse": 11,
+      "compileCacheEnabled": false,
+      "pretranslated": false,
+      "verifiedRows": 80,
+      "responseSha256": "44b714605a6a6d0b747315d2057858213ff8c247dbf29303ec0ab124b95826a7",
+      "sqliteVersion": "3.53.3",
+      "warmRequestMs": [
+        5.464404000000002,
+        4.083800999999994,
+        4.02796699999999,
+        3.1975009999999884,
+        3.6844019999999773
+      ],
+      "anonymousRows": 0,
+      "rlsWriteChecks": true,
+      "customRoleChecks": true,
+      "spawnToVerifiedResponseMs": 308.2181619999992,
+      "spawnToExitMs": 521.6992479999999
+    },
+    {
+      "mode": "reused",
+      "repetition": 3,
+      "phaseMs": {
+        "import": 119.13369500000002,
+        "create": 5.0067169999999805,
+        "systemSchema": 37.99804900000001,
+        "userSchema": 20.161329999999992,
+        "seed": 5.327868999999993,
+        "client": 7.117536000000001,
+        "firstRequest": 34.992547
+      },
+      "rssBytes": {
+        "beforeImport": 39055360,
+        "import": 73838592,
+        "create": 74756096,
+        "systemSchema": 154890240,
+        "userSchema": 215838720,
+        "seed": 233263104,
+        "client": 252661760,
+        "firstRequest": 360402944
+      },
+      "schemaReadyMs": 182.371879,
+      "importToFirstResponseMs": 229.737743,
+      "maxRssBytesAtFirstResponse": 363417600,
+      "cpuMsAtFirstResponse": {
+        "user": 443.101,
+        "system": 112.25
+      },
+      "involuntaryContextSwitchesAtFirstResponse": 16,
+      "compileCacheEnabled": true,
+      "pretranslated": false,
+      "verifiedRows": 80,
+      "responseSha256": "44b714605a6a6d0b747315d2057858213ff8c247dbf29303ec0ab124b95826a7",
+      "sqliteVersion": "3.53.3",
+      "warmRequestMs": [
+        5.626077000000009,
+        4.042218999999989,
+        3.7667749999999955,
+        3.905663000000004,
+        2.8104900000000157
+      ],
+      "anonymousRows": 0,
+      "rlsWriteChecks": true,
+      "customRoleChecks": true,
+      "spawnToVerifiedResponseMs": 280.8450750000002,
+      "spawnToExitMs": 488.0916299999999
+    },
+    {
+      "mode": "disabled",
+      "repetition": 4,
+      "phaseMs": {
+        "import": 159.851979,
+        "create": 4.940597999999994,
+        "systemSchema": 37.82707199999999,
+        "userSchema": 23.901094999999998,
+        "seed": 7.003915000000006,
+        "client": 6.884816999999998,
+        "firstRequest": 39.076167999999996
+      },
+      "rssBytes": {
+        "beforeImport": 39317504,
+        "import": 71450624,
+        "create": 72368128,
+        "systemSchema": 122949632,
+        "userSchema": 184561664,
+        "seed": 197931008,
+        "client": 211169280,
+        "firstRequest": 300318720
+      },
+      "schemaReadyMs": 226.59885100000002,
+      "importToFirstResponseMs": 279.485644,
+      "maxRssBytesAtFirstResponse": 302940160,
+      "cpuMsAtFirstResponse": {
+        "user": 501.414,
+        "system": 139.004
+      },
+      "involuntaryContextSwitchesAtFirstResponse": 11,
+      "compileCacheEnabled": false,
+      "pretranslated": false,
+      "verifiedRows": 80,
+      "responseSha256": "44b714605a6a6d0b747315d2057858213ff8c247dbf29303ec0ab124b95826a7",
+      "sqliteVersion": "3.53.3",
+      "warmRequestMs": [
+        7.254512000000034,
+        4.9052749999999605,
+        4.408950000000004,
+        3.5625890000000027,
+        4.074408000000005
+      ],
+      "anonymousRows": 0,
+      "rlsWriteChecks": true,
+      "customRoleChecks": true,
+      "spawnToVerifiedResponseMs": 340.7868100000005,
+      "spawnToExitMs": 555.0071559999997
+    },
+    {
+      "mode": "reused",
+      "repetition": 4,
+      "phaseMs": {
+        "import": 119.279504,
+        "create": 4.737632999999988,
+        "systemSchema": 37.74709300000001,
+        "userSchema": 17.216998999999987,
+        "seed": 5.355119999999999,
+        "client": 6.757916000000023,
+        "firstRequest": 36.12364499999998
+      },
+      "rssBytes": {
+        "beforeImport": 39190528,
+        "import": 73793536,
+        "create": 74579968,
+        "systemSchema": 122511360,
+        "userSchema": 172793856,
+        "seed": 183541760,
+        "client": 198221824,
+        "firstRequest": 287145984
+      },
+      "schemaReadyMs": 179.050783,
+      "importToFirstResponseMs": 227.21791,
+      "maxRssBytesAtFirstResponse": 290160640,
+      "cpuMsAtFirstResponse": {
+        "user": 427.365,
+        "system": 105.202
+      },
+      "involuntaryContextSwitchesAtFirstResponse": 7,
+      "compileCacheEnabled": true,
+      "pretranslated": false,
+      "verifiedRows": 80,
+      "responseSha256": "44b714605a6a6d0b747315d2057858213ff8c247dbf29303ec0ab124b95826a7",
+      "sqliteVersion": "3.53.3",
+      "warmRequestMs": [
+        5.7738390000000095,
+        4.538083000000029,
+        4.184041999999977,
+        3.407806999999991,
+        3.372764000000018
+      ],
+      "anonymousRows": 0,
+      "rlsWriteChecks": true,
+      "customRoleChecks": true,
+      "spawnToVerifiedResponseMs": 277.1699670000007,
+      "spawnToExitMs": 501.18979500000023
+    },
+    {
+      "mode": "pretranslated",
+      "repetition": 4,
+      "phaseMs": {
+        "import": 166.153113,
+        "create": 13.422732999999994,
+        "systemSchema": 6.644796000000014,
+        "userSchema": 16.516156999999993,
+        "seed": 6.454641000000009,
+        "client": 9.808817000000005,
+        "firstRequest": 32.36684500000001
+      },
+      "rssBytes": {
+        "beforeImport": 39186432,
+        "import": 72171520,
+        "create": 76234752,
+        "systemSchema": 78069760,
+        "userSchema": 83443712,
+        "seed": 84492288,
+        "client": 86851584,
+        "firstRequest": 88948736
+      },
+      "schemaReadyMs": 202.791882,
+      "importToFirstResponseMs": 251.36710200000002,
+      "maxRssBytesAtFirstResponse": 89210880,
+      "cpuMsAtFirstResponse": {
+        "user": 334.526,
+        "system": 54.512
+      },
+      "involuntaryContextSwitchesAtFirstResponse": 2,
+      "compileCacheEnabled": false,
+      "pretranslated": true,
+      "verifiedRows": 80,
+      "responseSha256": "44b714605a6a6d0b747315d2057858213ff8c247dbf29303ec0ab124b95826a7",
+      "sqliteVersion": "3.53.3",
+      "warmRequestMs": [
+        4.434257000000002,
+        3.286495000000002,
+        2.783159000000012,
+        3.156359000000009,
+        3.001515999999981
+      ],
+      "anonymousRows": 0,
+      "rlsWriteChecks": true,
+      "customRoleChecks": true,
+      "spawnToVerifiedResponseMs": 302.75760400000036,
+      "spawnToExitMs": 347.21594300000015
+    },
+    {
+      "mode": "reused",
+      "repetition": 5,
+      "phaseMs": {
+        "import": 126.411131,
+        "create": 6.919949000000003,
+        "systemSchema": 40.739305,
+        "userSchema": 21.801672999999994,
+        "seed": 6.635682000000003,
+        "client": 8.346187000000015,
+        "firstRequest": 38.854174
+      },
+      "rssBytes": {
+        "beforeImport": 39186432,
+        "import": 72822784,
+        "create": 74657792,
+        "systemSchema": 153542656,
+        "userSchema": 219607040,
+        "seed": 237301760,
+        "client": 262991872,
+        "firstRequest": 385675264
+      },
+      "schemaReadyMs": 195.94661000000002,
+      "importToFirstResponseMs": 249.708101,
+      "maxRssBytesAtFirstResponse": 389345280,
+      "cpuMsAtFirstResponse": {
+        "user": 460.592,
+        "system": 145.041
+      },
+      "involuntaryContextSwitchesAtFirstResponse": 7,
+      "compileCacheEnabled": true,
+      "pretranslated": false,
+      "verifiedRows": 80,
+      "responseSha256": "44b714605a6a6d0b747315d2057858213ff8c247dbf29303ec0ab124b95826a7",
+      "sqliteVersion": "3.53.3",
+      "warmRequestMs": [
+        5.81760399999996,
+        4.433525999999972,
+        4.142338999999993,
+        3.20386000000002,
+        3.110090000000014
+      ],
+      "anonymousRows": 0,
+      "rlsWriteChecks": true,
+      "customRoleChecks": true,
+      "spawnToVerifiedResponseMs": 300.28867100000025,
+      "spawnToExitMs": 494.5069969999995
+    },
+    {
+      "mode": "pretranslated",
+      "repetition": 5,
+      "phaseMs": {
+        "import": 167.302073,
+        "create": 12.906508000000002,
+        "systemSchema": 5.455781000000002,
+        "userSchema": 13.331965999999994,
+        "seed": 5.979286999999999,
+        "client": 5.811374999999998,
+        "firstRequest": 34.55080400000003
+      },
+      "rssBytes": {
+        "beforeImport": 39317504,
+        "import": 71905280,
+        "create": 73609216,
+        "systemSchema": 74133504,
+        "userSchema": 75837440,
+        "seed": 76754944,
+        "client": 77148160,
+        "firstRequest": 81080320
+      },
+      "schemaReadyMs": 199.043709,
+      "importToFirstResponseMs": 245.33779400000003,
+      "maxRssBytesAtFirstResponse": 81342464,
+      "cpuMsAtFirstResponse": {
+        "user": 331.382,
+        "system": 45.734
+      },
+      "involuntaryContextSwitchesAtFirstResponse": 10,
+      "compileCacheEnabled": false,
+      "pretranslated": true,
+      "verifiedRows": 80,
+      "responseSha256": "44b714605a6a6d0b747315d2057858213ff8c247dbf29303ec0ab124b95826a7",
+      "sqliteVersion": "3.53.3",
+      "warmRequestMs": [
+        5.770373000000006,
+        3.9357089999999744,
+        3.76330999999999,
+        3.7735159999999723,
+        3.714217000000019
+      ],
+      "anonymousRows": 0,
+      "rlsWriteChecks": true,
+      "customRoleChecks": true,
+      "spawnToVerifiedResponseMs": 299.36289099999976,
+      "spawnToExitMs": 343.3815199999999
+    },
+    {
+      "mode": "disabled",
+      "repetition": 5,
+      "phaseMs": {
+        "import": 151.855888,
+        "create": 5.717943999999989,
+        "systemSchema": 36.46475800000002,
+        "userSchema": 17.455838,
+        "seed": 5.443052000000023,
+        "client": 6.175421999999969,
+        "firstRequest": 51.308558000000005
+      },
+      "rssBytes": {
+        "beforeImport": 39190528,
+        "import": 70184960,
+        "create": 72413184,
+        "systemSchema": 125755392,
+        "userSchema": 182169600,
+        "seed": 199864320,
+        "client": 219045888,
+        "firstRequest": 344219648
+      },
+      "schemaReadyMs": 211.564744,
+      "importToFirstResponseMs": 274.42146,
+      "maxRssBytesAtFirstResponse": 349069312,
+      "cpuMsAtFirstResponse": {
+        "user": 500.628,
+        "system": 120.175
+      },
+      "involuntaryContextSwitchesAtFirstResponse": 3,
+      "compileCacheEnabled": false,
+      "pretranslated": false,
+      "verifiedRows": 80,
+      "responseSha256": "44b714605a6a6d0b747315d2057858213ff8c247dbf29303ec0ab124b95826a7",
+      "sqliteVersion": "3.53.3",
+      "warmRequestMs": [
+        6.146719000000019,
+        4.1181230000000255,
+        4.210923000000037,
+        3.038993000000005,
+        3.2429389999999785
+      ],
+      "anonymousRows": 0,
+      "rlsWriteChecks": true,
+      "customRoleChecks": true,
+      "spawnToVerifiedResponseMs": 326.78542899999957,
+      "spawnToExitMs": 526.9831210000002
+    }
+  ],
+  "summary": {
+    "disabled": {
+      "importMs": {
+        "n": 5,
+        "min": 151.836104,
+        "median": 157.71461899999997,
+        "max": 179.636879
+      },
+      "schemaReadyMs": {
+        "n": 5,
+        "min": 211.564744,
+        "median": 221.735478,
+        "max": 244.878292
+      },
+      "importToFirstResponseMs": {
+        "n": 5,
+        "min": 258.704934,
+        "median": 274.42146,
+        "max": 296.38466
+      },
+      "spawnToVerifiedResponseMs": {
+        "n": 5,
+        "min": 308.2181619999992,
+        "median": 326.78542899999957,
+        "max": 366.75451099999987
+      },
+      "firstRequestMs": {
+        "n": 5,
+        "min": 34.493628,
+        "median": 38.03647599999999,
+        "max": 51.308558000000005
+      },
+      "warmRequestMs": {
+        "n": 25,
+        "min": 3.038993000000005,
+        "median": 4.210923000000037,
+        "max": 11.421758000000011
+      },
+      "rssBytesAtFirstResponse": {
+        "n": 5,
+        "min": 300318720,
+        "median": 326823936,
+        "max": 344219648
+      }
+    },
+    "reused": {
+      "importMs": {
+        "n": 5,
+        "min": 114.75575299999998,
+        "median": 119.13369500000002,
+        "max": 126.411131
+      },
+      "schemaReadyMs": {
+        "n": 5,
+        "min": 175.405349,
+        "median": 179.050783,
+        "max": 195.94661000000002
+      },
+      "importToFirstResponseMs": {
+        "n": 5,
+        "min": 220.73854999999998,
+        "median": 227.21791,
+        "max": 249.708101
+      },
+      "spawnToVerifiedResponseMs": {
+        "n": 5,
+        "min": 272.02946999999995,
+        "median": 277.1699670000007,
+        "max": 300.28867100000025
+      },
+      "firstRequestMs": {
+        "n": 5,
+        "min": 33.582582,
+        "median": 34.992547,
+        "max": 38.854174
+      },
+      "warmRequestMs": {
+        "n": 25,
+        "min": 2.8104900000000157,
+        "median": 4.184041999999977,
+        "max": 6.983104000000026
+      },
+      "rssBytesAtFirstResponse": {
+        "n": 5,
+        "min": 287145984,
+        "median": 344498176,
+        "max": 385675264
+      }
+    },
+    "pretranslated": {
+      "importMs": {
+        "n": 5,
+        "min": 162.26453999999998,
+        "median": 166.153113,
+        "max": 170.98829
+      },
+      "schemaReadyMs": {
+        "n": 5,
+        "min": 194.372888,
+        "median": 199.043709,
+        "max": 207.43527999999998
+      },
+      "importToFirstResponseMs": {
+        "n": 5,
+        "min": 237.33209599999998,
+        "median": 250.31268400000002,
+        "max": 259.47978900000004
+      },
+      "spawnToVerifiedResponseMs": {
+        "n": 5,
+        "min": 296.05226700000003,
+        "median": 302.75760400000036,
+        "max": 312.955062
+      },
+      "firstRequestMs": {
+        "n": 5,
+        "min": 32.13738999999998,
+        "median": 33.05143300000003,
+        "max": 34.55080400000003
+      },
+      "warmRequestMs": {
+        "n": 25,
+        "min": 2.705011000000013,
+        "median": 3.4651329999999803,
+        "max": 7.11210699999998
+      },
+      "rssBytesAtFirstResponse": {
+        "n": 5,
+        "min": 81080320,
+        "median": 88903680,
+        "max": 90284032
+      }
+    }
+  },
+  "finishedAt": "2026-10-03T20:00:12.366Z",
+  "elapsedMs": 8579.765095
+}

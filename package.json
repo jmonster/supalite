@@ -11,7 +11,8 @@
   "scripts": {
     "prepare:baseline": "node scripts/prepare-baseline.mjs",
     "test": "npm run prepare:baseline && node --test --test-timeout=60000 --test-concurrency=1 test/*.test.mjs",
-    "check": "npm test"
+    "check": "npm test",
+    "benchmark:startup": "npm run prepare:baseline && node scripts/prepare-startup.mjs && node scripts/benchmark-startup.mjs"
   },
   "dependencies": {
     "kysely": "0.28.11"

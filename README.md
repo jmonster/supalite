@@ -30,6 +30,14 @@ npm run prepare:baseline
 
 Generated files and installed dependencies are ignored; the vendored `dist/` files are tracked.
 
+## Node startup
+
+An opt-in [prepared-DDL helper and startup benchmark](docs/startup.md) measures fresh-process provisioning, authenticated SDK requests, memory, and artifact size. It preserves the published package and checks schema/runtime fingerprints before replaying build-time translations.
+
+```sh
+npm run benchmark:startup
+```
+
 ## License
 
 The upstream Apache-2.0 license is preserved in [LICENSE](LICENSE) and [upstream/lite-0.11.0/LICENSE](upstream/lite-0.11.0/LICENSE). See [NOTICE](NOTICE) for attribution.
