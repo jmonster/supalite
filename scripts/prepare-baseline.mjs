@@ -82,7 +82,7 @@ await writeFile(
     {
       ...baseline,
       description:
-        "Reconstructed development harness over the published npm distribution; not recovered upstream TypeScript sources.",
+        "Integration with the published @supabase/lite 0.11.0 npm distribution.",
       patchedIndexSha256: createHash("sha256").update(output).digest("hex"),
       patches: patches.length,
     },

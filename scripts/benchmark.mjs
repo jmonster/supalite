@@ -87,7 +87,7 @@ async function runBenchmarks() {
       request: "Actual supabase-js -> in-process Lite Request/Response, exact count and HEAD",
       nodeSql: "Prepared node:sqlite statement execution; prepare reported separately",
       libsqlSql: "Local @libsql/client execute, including its preparation/driver overhead",
-      limitations: "Local in-memory databases, no network, no hosted D1/Bun/browser claim; direct SQL assumes this fixed schema and is not a generic containment replacement",
+      limitations: "Local in-memory databases without network latency. D1, Bun and browser runtimes are untested. Reference SQL assumes the benchmark schema.",
     },
     codeSize: {
       files: coreFiles,

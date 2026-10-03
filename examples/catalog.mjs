@@ -62,7 +62,7 @@ const scenarios = [
 ];
 
 console.log(
-  "Supalite contribution 01: JSONB filters through real supabase-js\n",
+  "JSONB filters through supabase-js\n",
 );
 for (const scenario of scenarios) {
   console.log(scenario.title);
@@ -106,5 +106,5 @@ for (const scenario of scenarios) {
   console.log("");
 }
 console.log(
-  "PGlite executes PostgreSQL operators locally. This is not hosted Supabase certification.",
+  "Reference results use PostgreSQL operators executed locally in PGlite.",
 );

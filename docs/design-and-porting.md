@@ -1,6 +1,6 @@
-# JSONB containment: design and upstream porting
+# JSONB containment design
 
-This guide separates the reusable change from the local machinery needed to test it against the published Lite 0.11.0 artifact.
+The compiler translates constant JSONB containment filters into SQLite JSON1 predicates. The adapter integrates those predicates with the published Lite 0.11.0 runtime.
 
 ## Behavioral contract
 
@@ -44,7 +44,7 @@ Unsupported shapes return to the caller before consuming parameter budget. Punct
 
 `jsonb-shallow.ts` specializes filters of depth three or less, including arrays, in both directions. It uses typed `json_each` nodes and bounded nested `EXISTS` / `NOT EXISTS` predicates. A required array object is evaluated against one candidate node, preserving element boundaries. Keys and values remain bound, wrong-type scalar inputs are guarded before JSON iteration, and SQL NULL remains NULL.
 
-The depth check runs before spending parameter budget. Deeper shapes return to the general walk. This is intentionally a shallow specialization: unrestricted SQL nesting was one of the portability failures that motivated the general compiler. Its focused tests cover the maximum eligible depth together with long extraction paths and embedding wrappers on both SQLite drivers.
+The depth check runs before spending parameter budget. Deeper shapes return to the general walk. The depth limit bounds SQL nesting. Its tests cover the maximum eligible depth together with long extraction paths and embedding wrappers on both SQLite drivers.
 
 ### General containment with ancestor metadata
 
@@ -58,11 +58,7 @@ Matching retains complete node identities. A matched child's parent can be proje
 
 JSON iteration uses a guarded container expression. Values returned for JSON strings by `json_each` are already dequoted; interpreting them as fresh JSON would lose type information or raise a malformed-JSON error. The implementation carries the JSON1 type alongside the value. See [SQLite JSON1](https://www.sqlite.org/json1.html).
 
-### Why this shape
-
-Earlier local implementations exposed two important portability failures: nested `EXISTS` expressions exhausted the older libSQL parser stack at modest JSON depth, and a correlated relation plan repeatedly rematerialized matches. A subsequent whole-tree join plan grew poorly on wide arrays with equal values.
-
-The current general walk bounds traversal by the filter and carries parent metadata directly. Keep depth, wide-array, mixed-type, and split-element negative cases when changing the plan. Small semantic fixtures alone would not catch those failures. JSON1 can still parse subdocuments repeatedly; this design makes no parse-once or linear-time guarantee.
+The general walk bounds traversal by filter depth and retains each node’s parent metadata. JSON1 can still parse subdocuments repeatedly; the compiler does not guarantee parse-once or linear-time execution.
 
 ## Lite integration boundary
 
@@ -105,7 +101,7 @@ The fidelity boundary matters even for syntactically valid input:
 - Raw stored documents with duplicate object labels can behave differently in JSON1 path lookup and iteration; no duplicate-label parity is claimed
 - Stored JSON must be valid for the selected JSON1 operations; the filter compiler is not a general repair or validation layer for externally written database text
 
-Stored numeric-fidelity and duplicate-label cases can produce different results rather than being uniformly rejected. The corpus separates fidelity cases from supported-domain cases; keep those exclusions visible when reporting pass rates. Broader fidelity would need a separate numeric/normalization design.
+Stored numeric-fidelity and duplicate-label cases can produce different results rather than being uniformly rejected. The test corpus records those cases separately from supported-domain cases.
 
 Budgets limit generated-query complexity, not table size or total latency. A broad filter can still scan many large documents. The SQL uses recursive CTEs and materialization features available in the two tested engines; other Lite runtime adapters need their own execution tests.
 
@@ -116,23 +112,3 @@ Budgets limit generated-query complexity, not table size or total latency. A bro
 The bridge hooks raw-literal parsing, ordinary and negated predicate dispatch, repeated-filter merging, conjunction preservation, and final-query validation. The rest of the copied bundle is retained. Its generated imports point to this checkout's compiled helpers, so generated output must be rebuilt after moving the checkout.
 
 This is a reproducible test bridge to one public distribution. The package includes minified JavaScript, type declarations, documentation, and an Apache-2.0 license; its original TypeScript source tree, source maps, and upstream test/build setup are not shipped. Keep the baseline dependency pinned and generated copies out of version control.
-
-## Porting upstream
-
-Port the behavior into the readable upstream source at its normal parser/compiler boundaries. Do not carry artifact-local minified names or string replacements into a source patch.
-
-1. **Core compiler:** move the original TypeScript compiler and supported specializations into the existing SQLite dialect layer, retaining the project's Kysely conventions
-2. **Literal representation:** preserve strict JSON wire text or a correctly typed JSON AST before the ordinary filter parser strips quote/type distinctions; keep both containment directions and negation covered
-3. **Schema dispatch:** use the upstream metadata resolver to select declared JSONB columns, including relation aliases and JSON paths; retain existing PostgreSQL, SQL-array, and range dispatch
-4. **Composition:** integrate the predicate before row selection, count, pagination, and mutation execution rather than after materialization
-5. **Budgets and errors:** fit filter and complete-query limits into upstream configuration/error handling; count other request bindings, too
-6. **Parser fix:** submit repeated-column conjunction preservation as a small separable change with its own regression coverage
-7. **Tests:** port named PostgreSQL differential cases, real-client requests, malformed input, exact counts, mutation sentinels, depth limits, and wide/pruned-document challenges into the native upstream test suite
-
-The reusable pieces are the original TypeScript, semantic fixtures, and request-level regressions. The baseline copier, checksum constants, generated import URLs, minified replacement strings, and local package loader are development scaffolding for this repository.
-
-Before an upstream submission, run that repository's existing test suite and the exact intended drivers. This workspace cannot run tests that were not included in the npm artifact. Performance reports should identify compiler preparation, SQL execution, and end-to-end requests separately, and verify row results before timing comparisons.
-
-## Review order
-
-Start with the before/after client regression, then the semantic fixtures, compiler, adapter, and artifact bridge. Review `merge-filters.ts` independently. Finish with the [performance evidence](performance.md), [contribution workflow](../CONTRIBUTING.md), and [small follow-on roadmap](roadmap.md).

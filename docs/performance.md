@@ -6,7 +6,7 @@ Run `npm ci`, then `npm run benchmark` on Node 24 or later. The package command 
 
 The benchmark writes `reports/benchmark.json` and prints concise timing rows. The report is incremental. A supervising process stops the benchmark worker after a 50-second default safety budget, including when a synchronous SQLite query blocks JavaScript. A stopped or failed run is explicitly marked incomplete and exits nonzero; its partial results are not a complete benchmark. For a slower machine, use `npm run benchmark -- --budget-ms=120000`.
 
-No test fails merely for exceeding a claimed performance target. Counts are checked on the warm-up and every measured execution. The process safety budget is a resource guard, not a latency assertion.
+Counts are checked on the warm-up and every measured execution. The process budget limits resource use; it is not a performance threshold.
 
 ## What is measured
 
@@ -31,11 +31,11 @@ The general plan uses JSON1 traversal and bottom-up containment match sets. It p
 
 These are compatibility filters, not a replacement for PostgreSQL GIN indexes. Whole-table scans and large arrays can be expensive. Apply selective indexed relational predicates, such as tenant or document ID, before JSON matching when the application permits it. For a fixed production schema and a hot query, a purpose-built SQL predicate or generated/indexed column can be substantially faster.
 
-The compiler deliberately bounds filter depth, node count, and parameters. The adapter also checks the complete request's SQL and parameter budgets. PostgreSQL numeric precision and raw duplicate-object-label canonicalization remain outside the documented input-fidelity guarantee; benchmark fixtures do not hide those boundaries by claiming arbitrary PostgreSQL equivalence.
+The compiler deliberately bounds filter depth, node count, and parameters. The adapter also checks the complete request's SQL and parameter budgets. Arbitrary-precision PostgreSQL numeric behavior and raw duplicate-object-label canonicalization are not covered by these benchmarks.
 
 ## Recorded run
 
-Recorded on **2026-10-03, 14:56:23–14:56:48 UTC**, after the source was frozen and other local test jobs had stopped. All **88 benchmark cases completed with verified counts in 25.02 seconds**, within the default supervisor budget.
+Recorded on **2026-10-03, 14:56:23–14:56:48 UTC**. All **88 benchmark cases completed with verified counts in 25.02 seconds**, within the default supervisor budget.
 
 Environment: Node **24.19.0**, Linux x64 shared container, Intel Xeon Platinum 8573C, nine available processors. SQLite versions were **3.53.3** through Node and **3.45.1** through libSQL. This remains a shared-host measurement; ordinary scheduling and garbage-collection variation are not eliminated.
 
@@ -68,7 +68,7 @@ The shallow and general plans are deliberately measured separately. At 5,000 ele
 
 Actual one-row depth-16 probes completed in 0.02–8.30 ms depending on engine, direction, and selected plan. A shallow comparison forcing the general plan with an additional 128-level irrelevant stored branch completed in 0.37–1.83 ms. These cases verify bounded behavior and pruning; they do not establish whole-table or production capacity.
 
-The measured emitted-core SHA-256 is `63df1023a97c75d6f04c18729844d88a05e8aff82d85e7a07da9c4f2e2b71fa7`. The three emitted modules totaled **17,261 bytes**, or **4,657 bytes gzipped**. A new build or source change can legitimately change this fingerprint; rerun the benchmark instead of treating these numbers as timeless constants.
+The measured emitted-core SHA-256 is `63df1023a97c75d6f04c18729844d88a05e8aff82d85e7a07da9c4f2e2b71fa7`. The three emitted modules totaled **17,261 bytes**, or **4,657 bytes gzipped**. The fingerprint and sizes apply to this build.
 
 Code-size numbers concatenate the unminified emitted `jsonb-*.js` modules and gzip that buffer. They exclude the adapter, Kysely, database engines, and all package dependencies; they are not an installed package size or a browser bundle claim.
 

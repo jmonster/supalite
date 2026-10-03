@@ -1,14 +1,12 @@
-# Supalite contributions
+# Supalite
 
-Independent, testable improvements to Supabase Lite, starting with SQLite JSONB containment and a small repeated-filter parser fix.
+SQLite JSONB containment filters for `@supabase/lite@0.11.0`, with PostgreSQL differential tests and a repeated-column filter fix.
 
-The main contribution makes `.contains()` and `.containedBy()` useful for nested documents: catalog variants, structured issue filters, capability sets, and event metadata. Filtering stays in SQL, so the same predicate selects rows for counts, pagination, updates, and deletes. It uses Lite's existing Kysely/SQLite JSON1 stack, with no UDF registration or additional production dependency.
+The JSONB compiler supports `.contains()` and `.containedBy()` on nested objects and arrays. Predicates execute in SQL and apply to row selection, counts, pagination, updates, and deletes. The adapter targets SQLite columns declared as `jsonb`; PostgreSQL and SQL-array operators retain their existing behavior.
 
-This is a development workspace built around the published `@supabase/lite@0.11.0` package. The compiler and integration helpers in [`src/`](src/) are new TypeScript. The published package supplies the baseline runtime; its original TypeScript source tree and upstream test/build setup are not shipped. This repository is not published as an npm package.
+## Run locally
 
-## Try it
-
-Requires Node.js 24 or newer and npm. Tests use local Node SQLite, libSQL, and the PostgreSQL engine in PGlite; no hosted database is required.
+Requires Node.js 24 or newer.
 
 ```sh
 npm ci
@@ -16,13 +14,14 @@ npm test
 npm run demo
 ```
 
-`npm test` builds the TypeScript, prepares untouched and patched copies of the exact baseline, and runs the tests. The installed package is left untouched. Generated files live in `.generated/`; `prepare:baseline` refuses to patch a version, checksum, or integration point it does not recognize.
+Tests use Node SQLite, local libSQL, and PostgreSQL through PGlite. `npm test` compiles the TypeScript and prepares separate baseline and patched packages in `.generated/`. The preparation script checks the pinned package version, npm integrity, bundle checksum, and each patch location. It leaves the installed package unchanged.
 
-For the compiler tests alone, run `npm run test:core`. For the local workload benchmark, run `npm run benchmark` and read the [performance notes](docs/performance.md) before comparing timings.
+- `npm run test:core`: compiler differential tests
+- `npm run benchmark`: local workload measurements, written to `reports/benchmark.json`
 
-## Before and after
+## JSONB filters
 
-Given a `documents` table with a `jsonb` column named `body`:
+For a `documents` table with a `jsonb` column named `body`:
 
 ```js
 await client.from('documents').insert([
@@ -35,51 +34,35 @@ const result = await client
   .select('id')
   .contains('body', { profile: { plan: 'pro' } })
   .order('id')
+// result.data: [{ id: 1 }]
 ```
 
-With the untouched 0.11.0 artifact, Node SQLite and libSQL return HTTP 500 because the nested object reaches SQL as an unsupported bound value. With the patch, both return HTTP 200 and `[{ id: 1 }]`, matching Lite's PGlite backend. This case is included in the [before/after regression tests](test/regressions.test.mjs).
+Use the patched package prepared by this repository to run this example; installing the published 0.11.0 package alone does not enable these filters. See [the executable catalog example](examples/catalog.mjs) for client setup and baseline comparisons.
 
-Array matching also preserves element boundaries. A document containing `[{ color: 'red' }, { size: 'M' }]` must not match `[{ color: 'red', size: 'M' }]`. All fields in a required object have to match one candidate array element.
+Array matching preserves element boundaries: `[{ color: 'red' }, { size: 'M' }]` does not contain `[{ color: 'red', size: 'M' }]`.
 
-When the JSONB operand is an array, pass JSON text:
+Pass JSON arrays and scalars as serialized JSON. A JavaScript array passed directly to Supabase-js `.contains()` is encoded as a PostgreSQL array literal:
 
 ```js
 client.from('documents').select('id')
   .contains('body', JSON.stringify([{ color: 'red', size: 'M' }]))
 ```
 
-Supabase-js encodes a JavaScript array passed directly to `.contains()` as a PostgreSQL array literal. Object operands can be passed directly; JSON scalars and JSON arrays should be supplied as serialized JSON. `.not()` and `.or()` accept raw PostgREST syntax. See the [client serialization source](https://raw.githubusercontent.com/supabase/postgrest-js/master/src/PostgrestFilterBuilder.ts).
+Object operands can be passed directly. `.not()` and `.or()` accept raw PostgREST filter syntax.
 
-## What is covered
+## Tests and limitations
 
-- Nested object subsets, unordered arrays, duplicate array requirements, empty containers, and same-element matching
-- JSON type distinctions, case-sensitive strings, missing keys, JSON null, and SQL NULL under `NOT`
-- Both containment directions, logical composition, JSON-preserving `->` paths, counts, pagination, and filtered mutations
-- A separate parser fix that preserves repeated filters on one column as conjunctions, including repeated negated filters
+Tests compare SQLite containment results with PostgreSQL `@>` and `<@` in PGlite, then exercise client requests on Node SQLite, libSQL, and PGlite. They cover nested containers, JSON types, missing values, SQL NULL, negation, JSON-preserving paths, counts, pagination, filtered mutations, and repeated filters on one column.
 
-The adapter selects the new compiler only for SQLite columns identified as `jsonb`. PostgreSQL's containment operators and Lite's native SQL-array handling retain their existing paths.
+- Hosted D1, Durable Objects, Bun, browser SQLite, and hosted Supabase have not been tested here
+- Filter integers outside `Number.isSafeInteger` are rejected; arbitrary-precision numbers and raw stored duplicate object labels can differ from PostgreSQL
+- Default limits are depth 16, 128 value nodes, and 64 bound parameters per filter; requests using the feature allow 100 total parameters and 100,000 SQL bytes
+- Broad scans and large nested arrays can be expensive; no JSON index is added
 
-## Verification and limits
+See [design and limits](docs/design-and-porting.md) and [performance measurements](docs/performance.md).
 
-The [compiler tests](test/compiler.test.mjs) compare executed SQLite predicates against actual PostgreSQL `@>` and `<@` results from PGlite. The [regression tests](test/regressions.test.mjs) exercise real supabase-js requests against the untouched and patched packages on Node SQLite, libSQL, and PGlite. [Request contract](test/contracts.test.mjs) and [application tests](test/application.test.mjs) cover behavior beyond isolated booleans.
+## Baseline
 
-The selected before/after set improves from 3/34 to 34/34 matches with PostgreSQL on each SQLite driver. The full compiler corpus executes 11,136 SQLite/PostgreSQL comparisons across both drivers, with additional specialization and request-level tests.
+The runtime baseline is the published `@supabase/lite@0.11.0` npm artifact. Its original TypeScript source and upstream test/build configuration are not included in that artifact. The TypeScript under `src/` and the tests in this repository are maintained separately. This repository is not published to npm.
 
-These are focused contribution tests, not the absent upstream test suite or a claim of complete Supabase compatibility. Node SQLite and libSQL have been exercised. Hosted D1, Durable Objects, Bun, browser SQLite, and hosted Supabase have not been certified by this work.
-
-Filter parsing is strict JSON, and filter integers outside `Number.isSafeInteger` are rejected with `22003`. Arbitrary-precision numeric fidelity and raw stored duplicate object labels remain outside the parity claim and can produce different results without an error. The default filter budget is depth 16, 128 value nodes, and 64 bound parameters per predicate; feature-bearing SQLite requests are also checked against 100 total parameters and 100,000 SQL bytes. See [the design guide](docs/design-and-porting.md#limits-and-input-boundary) for details.
-
-Broad JSON scans can still be expensive, especially for deeply nested arrays or large documents. Prefer a selective relational predicate where available. The implementation does not add a JSON index; [benchmarks](docs/performance.md) report specific workloads rather than a general speed claim.
-
-## Review and contribute
-
-- [`src/jsonb-containment.ts`](src/jsonb-containment.ts): validation and general SQL compiler
-- [`src/jsonb-object-fast-path.ts`](src/jsonb-object-fast-path.ts): object-only specialization
-- [`src/jsonb-shallow.ts`](src/jsonb-shallow.ts): bounded shallow-filter specialization, including arrays
-- [`src/lite-adapter.ts`](src/lite-adapter.ts): JSONB type gate, literal preservation, JSON paths, and request budgets
-- [`src/merge-filters.ts`](src/merge-filters.ts): independently portable repeated-filter fix
-- [`scripts/prepare-baseline.mjs`](scripts/prepare-baseline.mjs): checksum-guarded artifact bridge
-- [Design and upstream porting](docs/design-and-porting.md): semantics, integration assumptions, and what belongs in an upstream patch
-- [Contribution workflow](CONTRIBUTING.md) and [roadmap](docs/roadmap.md): keep the next improvement independently reviewable
-
-Apache-2.0. The baseline's license is retained in each generated package copy; this repository includes its [license](LICENSE).
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development commands. Licensed under [Apache-2.0](LICENSE); generated package copies retain the baseline license.
