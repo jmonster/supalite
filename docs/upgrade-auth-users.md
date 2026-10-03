@@ -1,0 +1,44 @@
+# Auth user compatibility during upgrade
+
+A real local-Supabase qualification of the unmodified Lite 0.11.0 upgrade reached a specific failure: schema/auth/data migration completed and preserved user and identity IDs, but fresh password sign-in returned `400 invalid_credentials`. The same synthetic fixture signed in successfully before upgrade. [Qualification run](https://github.com/jmonster/supalite/actions/runs/37150789045)
+
+## Cause
+
+Lite's packaged `auth.users` schema has no `instance_id` column, so its auth exporter omits that column. The Supabase target's column is nullable with no default. GoTrue's user lookup explicitly requires the zero UUID in that column; migrated rows with `NULL` are therefore invisible to the lookup.
+
+This follows the versions used by the published local upgrade path:
+
+- Supabase CLI 2.98.1 [pins GoTrue 2.188.1](https://github.com/supabase/cli/blob/b89a94567975321f9eb58a487825fb2a35f11188/pkg/config/templates/Dockerfile#L13)
+- GoTrue's initial schema declares [nullable `instance_id` without a default](https://github.com/supabase/auth/blob/f3425cf742c69ad663776105e0363d81c5d4d731/migrations/00_init_auth_schema.up.sql#L4)
+- Its [email, phone and ID lookups require the zero UUID](https://github.com/supabase/auth/blob/f3425cf742c69ad663776105e0363d81c5d4d731/internal/models/user.go#L618-L631)
+
+The fixture's bcrypt hash was preserved and verified against the original password. No password rehashing or password reset is needed to correct the lookup mismatch.
+
+There is a second field-representation mismatch in the same export: Lite uses `NULL` for inactive token/change text fields, while the [GoTrue User model uses non-nullable strings](https://github.com/supabase/auth/blob/f3425cf742c69ad663776105e0363d81c5d4d731/internal/models/user.go#L37-L56). Supabase documents the resulting [NULL-to-string scan error during login](https://supabase.com/docs/guides/troubleshooting/scan-error-on-column-confirmation_token-converting-null-to-string-is-unsupported-during-auth-login-a0c686).
+
+## Correction
+
+`src/upgrade/auth-users.ts` normalizes only Supabase-target `auth.users` records:
+
+- A missing or null `instance_id` becomes `00000000-0000-0000-0000-000000000000`
+- Missing or null inactive token/change text fields become empty strings
+- Existing non-null values, password hashes, identity IDs, confirmation timestamps, metadata and nullable contacts remain unchanged
+
+The field list is limited to confirmation, recovery, email-change, phone-change and reauthentication token/change strings. Email addresses, phone numbers, password hashes and timestamps are not coerced to empty strings. The normalizer does not confirm users or create credentials or sessions.
+
+The existing exporter still handles SQL quoting, JSON/boolean conversion, generated-column omission, identity export and migration order. The Lite-schema rehearsal export and all non-user auth table exports remain unchanged. Both real local Supabase and hosted upgrades use the Supabase-target mapping; the internal `local` export mode is for the packaged rehearsal schema.
+
+The integration uses a separate generated copy of the verified npm artifact. It requires the exact published CLI SHA-256 and one integration anchor before adding an import and one helper call. The vendored baseline is unchanged. A source-level upstream port should call the readable helper from the auth-user export path rather than carry the distribution patch.
+
+## Verification
+
+```sh
+npm ci
+npm test
+```
+
+Tests create real Lite Auth users, invoke the original bundled exporter with and without the guarded integration, and apply its SQL to PGlite with the relevant Supabase auth-schema difference. The baseline user is present in the database but returns zero rows for GoTrue's lookup predicate. The corrected user is discoverable, retains the exact password hash, verifies the original password, rejects a different password, and preserves IDs, confirmation state and metadata.
+
+Additional tests check multiple users, pending nonempty token values and SQL quoting, preservation of nullable unique contacts, source-row immutability, unchanged rehearsal/non-user export SQL, and refusal to patch unknown artifacts.
+
+The published package does not expose the exporter as a public API. The test-only loader verifies the complete bundle and extracts its self-contained exporter closure, including its original conversion helpers and constant tables. It does not substitute a new exporter. This provides executable SQL-level coverage; PGlite does not run GoTrue itself. A corrected full-stack qualification is required before claiming successful end-to-end sign-in after migration.
