@@ -1,5 +1,5 @@
 {
-  "name": "supalite-jsonb-parity",
+  "name": "supalite-contributions",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -11,8 +11,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "prepare:baseline": "node scripts/prepare-baseline.mjs",
-    "test": "npm run build && npm run prepare:baseline && node --test --test-concurrency=1 test/*.test.mjs",
-    "test:core": "npm run build && node --test test/compiler.test.mjs",
+    "test": "npm run build && npm run prepare:baseline && node --test --test-timeout=60000 --test-concurrency=1 test/*.test.mjs",
+    "test:core": "npm run build && node --test --test-timeout=60000 test/compiler.test.mjs",
     "demo": "npm run build && npm run prepare:baseline && node examples/catalog.mjs",
     "benchmark": "npm run build && npm run prepare:baseline && node scripts/benchmark.mjs",
     "check": "npm test"
