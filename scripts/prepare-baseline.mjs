@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { chmod, cp, lstat, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { patchRepeatedFilters } from "./patch-repeated-filters.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const manifest = JSON.parse(
@@ -105,8 +106,26 @@ for (const file of manifest.files) {
   await chmod(resolve(target, file.path), Number.parseInt(file.mode, 8));
 }
 await verifyDistribution(target);
+
+const input = await readFile(resolve(source, "dist/index.js"), "utf8");
+const mergerUrl = pathToFileURL(resolve(root, "dist/merge-filters.js")).href;
+const output = patchRepeatedFilters(input, mergerUrl);
+const patchedTarget = resolve(root, ".generated/patched/node_modules/@supabase/lite");
+await mkdir(dirname(patchedTarget), { recursive: true });
+await rm(patchedTarget, { recursive: true, force: true });
+await cp(source, patchedTarget, { recursive: true });
+for (const file of manifest.files) {
+  await chmod(resolve(patchedTarget, file.path), Number.parseInt(file.mode, 8));
+}
+await writeFile(resolve(patchedTarget, "dist/index.js"), output);
 await writeFile(
   resolve(root, ".generated/provenance.json"),
-  JSON.stringify({ ...baseline, source: "upstream/lite-0.11.0", files: paths.length }, null, 2) + "\n",
+  JSON.stringify({
+    ...baseline,
+    source: "upstream/lite-0.11.0",
+    files: paths.length,
+    patchedIndexSha256: createHash("sha256").update(output).digest("hex"),
+    patches: 2,
+  }, null, 2) + "\n",
 );
-console.log(`Verified and prepared ${baseline.name} ${baseline.version} (${paths.length} unmodified files)`);
+console.log(`Verified ${baseline.name} ${baseline.version} (${paths.length} unmodified files) and prepared repeated-filter patch (2 parser seams)`);

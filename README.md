@@ -1,15 +1,19 @@
 # Supalite
 
-This repository preserves the published `@supabase/lite` **0.11.0** npm distribution as a reproducible baseline.
+Preserves repeated filters on the same column as conjunctions in the published `@supabase/lite@0.11.0` request parser.
 
-## Contents
+For example, both exclusions apply in this request:
 
-- `upstream/lite-0.11.0/`: all 77 files from the [published npm tarball](https://registry.npmjs.org/@supabase/lite/-/lite-0.11.0.tgz), with their original bytes and file modes
-- `upstream/manifest.json`: package version, npm integrity, tarball SHA-256, and each file's SHA-256, size, and mode
-- `scripts/prepare-baseline.mjs`: validates the installed package, lockfile integrity, and complete vendored distribution, then copies the vendored files into `.generated/baseline/node_modules/@supabase/lite/`
-- `test/`: basic integration smoke tests using `@supabase/supabase-js` with the Node SQLite, libSQL, and PGlite adapters
+```js
+const result = await client
+  .from('items')
+  .select('id,name')
+  .neq('category', 'fruit')
+  .neq('category', 'vegetable')
+  .order('id')
+```
 
-The npm artifact contains bundled JavaScript, type declarations, and package documentation. It does not contain the original upstream TypeScript implementation. The files under `upstream/lite-0.11.0/` are the published distribution.
+The baseline parser overwrites the first `neq` filter. The patched parser preserves both conditions, including repeated negated filters and composition with existing `and` groups. The change applies to Node SQLite, libSQL, and PGlite requests.
 
 ## Run
 
@@ -20,16 +24,20 @@ npm ci
 npm test
 ```
 
-`npm test` first verifies and prepares the baseline, then creates a table on each adapter and checks SDK insert, select, equality-filter, and exact-count operations. Schema setup uses the package's migrator. These smoke tests do not establish comprehensive compatibility.
+Tests prepare separate baseline and patched packages, then exercise the parser through Supabase-js requests and direct unit tests. Installing the published npm package alone does not apply the fix.
 
-To verify and copy the distribution without running the smoke tests:
+## Implementation
 
-```sh
-npm run prepare:baseline
-```
+- [`src/merge-filters.ts`](src/merge-filters.ts) preserves repeated operators as separate conjunction terms and treats column names as own data properties
+- [`scripts/patch-repeated-filters.mjs`](scripts/patch-repeated-filters.mjs) applies the repeated-filter merge and existing-`and` preservation changes at exact, checked locations in the baseline bundle
+- [`test/`](test/) contains regression tests and baseline smoke tests
 
-Generated files and installed dependencies are ignored; the vendored `dist/` files are tracked.
+Generated package copies live in `.generated/`; the installed package and vendored baseline remain unchanged.
 
-## License
+## Baseline
 
-The upstream Apache-2.0 license is preserved in [LICENSE](LICENSE) and [upstream/lite-0.11.0/LICENSE](upstream/lite-0.11.0/LICENSE). See [NOTICE](NOTICE) for attribution.
+[`upstream/lite-0.11.0/`](upstream/lite-0.11.0/) contains all 77 files from the published npm distribution. [`upstream/manifest.json`](upstream/manifest.json) records npm integrity, the tarball SHA-256, and per-file checksums and modes. Preparation verifies the distribution before applying any patch.
+
+The npm artifact includes bundled JavaScript, declarations, and package documentation. It does not include the original upstream TypeScript implementation. The parser helper and regression tests in this repository are maintained separately.
+
+Licensed under [Apache-2.0](LICENSE). See [NOTICE](NOTICE) for attribution.

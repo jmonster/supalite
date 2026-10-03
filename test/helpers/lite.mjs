@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 
-export async function modules(flavor = "baseline") {
+export async function modules(flavor = "patched") {
   const packageRoot = new URL(
     `../../.generated/${flavor}/node_modules/@supabase/lite/`,
     import.meta.url,
@@ -26,7 +26,7 @@ export async function modules(flavor = "baseline") {
 }
 
 export async function createHarness({
-  flavor = "baseline",
+  flavor = "patched",
   backend = "node",
   ddl,
   auth = { enabled: false },

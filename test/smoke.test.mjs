@@ -5,6 +5,7 @@ import { createHarness } from "./helpers/lite.mjs";
 for (const backend of ["node", "libsql", "pglite"]) {
   test(`${backend}: published baseline SDK insert, select, filter, and count`, async (t) => {
     const { client, close } = await createHarness({
+      flavor: "baseline",
       backend,
       ddl: "CREATE TABLE items (id integer PRIMARY KEY, name text NOT NULL, category text NOT NULL);",
     });
