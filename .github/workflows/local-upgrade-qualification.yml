@@ -1,0 +1,73 @@
+name: One-shot local upgrade qualification
+
+on:
+  pull_request:
+    types: [opened]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  local-upgrade:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'verify/local-upgrade-once-20261003-v2'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      DO_NOT_TRACK: '1'
+      SUPABASE_TELEMETRY_DISABLED: '1'
+      SUPABASE_ACCESS_TOKEN: ''
+      LITE_SUPABASE_CLI: npx --yes supabase@2.98.1
+      TMPDIR: /tmp/lite-upgrade-qualification-${{ github.run_id }}
+    steps:
+      - name: Check out the qualification commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Use Node.js 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Verify prerequisites and install pinned dependencies
+        timeout-minutes: 4
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$TMPDIR"
+          docker info >/dev/null
+          {
+            docker ps -a --filter label=com.supabase.cli.project \
+              --format '{{.Label "com.supabase.cli.project"}}'
+            while IFS= read -r volume; do
+              docker volume inspect --format '{{index .Labels "com.supabase.cli.project"}}' "$volume"
+            done < <(docker volume ls --filter label=com.supabase.cli.project --format '{{.Name}}')
+          } | sort -u > "$RUNNER_TEMP/lite-projects-before"
+          npm ci --no-audit --no-fund
+          npx --yes supabase@2.98.1 --version
+      - name: Qualify the real local upgrade
+        timeout-minutes: 13
+        run: npm run test:upgrade:local
+      - name: Stop any remaining fixture stack
+        if: always()
+        timeout-minutes: 3
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! docker info >/dev/null 2>&1; then
+            echo 'Docker was unavailable; no stack can be inspected.'
+            exit 0
+          fi
+          touch "$RUNNER_TEMP/lite-projects-before"
+          {
+            docker ps -a --filter label=com.supabase.cli.project \
+              --format '{{.Label "com.supabase.cli.project"}}'
+            while IFS= read -r volume; do
+              docker volume inspect --format '{{index .Labels "com.supabase.cli.project"}}' "$volume"
+            done < <(docker volume ls --filter label=com.supabase.cli.project --format '{{.Name}}')
+          } | sort -u > "$RUNNER_TEMP/lite-projects-after"
+          while IFS= read -r project; do
+            case "$project" in
+              lite-local-*) npx --yes supabase@2.98.1 stop --project-id "$project" --no-backup ;;
+            esac
+          done < <(comm -13 "$RUNNER_TEMP/lite-projects-before" "$RUNNER_TEMP/lite-projects-after")
