@@ -20,7 +20,7 @@ npm ci
 npm test
 ```
 
-`npm test` first verifies and prepares the baseline, then creates a table on each adapter and checks SDK insert, select, equality-filter, and exact-count operations. Schema setup uses the package's migrator. These smoke tests do not establish comprehensive compatibility.
+`npm test` verifies the baseline, builds the binary export fix, and runs the focused upgrade regression tests plus the SDK smoke tests. Schema setup uses the package's migrator. These tests do not establish comprehensive compatibility.
 
 To verify and copy the distribution without running the smoke tests:
 
@@ -29,6 +29,41 @@ npm run prepare:baseline
 ```
 
 Generated files and installed dependencies are ignored; the vendored `dist/` files are tracked.
+
+## Binary upgrade export
+
+### Problem
+
+The published user-data exporter treats binary driver values as JSON objects.
+For a `bytea` column, both nonempty and empty binary values become `::jsonb`
+expressions, and PostgreSQL rejects the generated insert with SQLSTATE `42804`.
+The documented PostgreSQL-to-SQLite mapping supports `bytea` as `BLOB`.
+
+### Change
+
+[`src/upgrade/binary-value.ts`](src/upgrade/binary-value.ts) formats `ArrayBuffer`
+and its views as hexadecimal `decode(..., 'hex')` expressions, which return
+`bytea`. Views use their exact byte offset and length. The helper does not coerce
+plain objects, arrays, strings, or nulls into binary data, and existing typed JSON
+handling remains unchanged.
+
+The package does not publish its original TypeScript source. A small exact-hash
+guarded seam in `scripts/patch-upgrade-binary.mjs` attaches this implementation to
+a generated copy of the shipped CLI. All 77 vendored files remain unmodified.
+
+### Tests
+
+- The shipped exporter fails with `42804`; the candidate exporter round-trips
+  mixed bytes, every byte value, empty binary values, and nulls into PGlite
+- Source adapters include Node SQLite and PGlite (`Uint8Array`), plus libSQL
+  (`ArrayBuffer`), using real driver results
+- Buffer and typed-array slices, DataView offsets, JSON objects, strings, nulls,
+  and recursive `bytea[]` formatting have focused regression coverage
+- Foreign-key ordering, generated-column omission, serial sequence resets, and
+  source rows are unchanged
+
+Run `npm test` for the type build, distribution guards, SDK smoke tests, and
+binary export regressions. All database execution is local to the test process.
 
 ## License
 
