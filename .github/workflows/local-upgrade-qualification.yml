@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   local-upgrade:
-    if: github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'verify/local-upgrade-once-20261003-v2'
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'verify/local-upgrade-auth-once-20261003'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:

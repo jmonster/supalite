@@ -32,7 +32,7 @@ test("same SDK app contract before and after the shipped real local Supabase upg
   await writeFile(resolve(project, appliedFile), "THIS IS NOT THE RECORDED MIGRATION;\n");
   try {
     const result = await run(project, ["upgrade", "--target", "local", "--local-dir", target,
-      "--force", "--no-migrate-sessions", "--dump-credentials", credentialsPath], { flavor: "baseline", timeout: 480000 });
+      "--force", "--no-migrate-sessions", "--dump-credentials", credentialsPath], { flavor: "auth-upgrade", timeout: 480000 });
     assert.equal(result.code, 0, `${result.stdout}\n${result.stderr}`);
     const credentials = JSON.parse(await readFile(credentialsPath, "utf8"));
     assert.equal(credentials.target, "local");

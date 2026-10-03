@@ -15,7 +15,8 @@
     "build": "tsc -p tsconfig.json",
     "prepare:upgrade": "npm run build && node scripts/prepare-upgrade.mjs",
     "test:upgrade": "npm run prepare:upgrade && node --test --test-timeout=120000 --test-concurrency=1 test/upgrade*.test.mjs",
-    "test:upgrade:local": "npm run prepare:upgrade && LITE_LOCAL_SUPABASE_TESTS=1 node --test --test-timeout=600000 test/upgrade-local.test.mjs"
+    "test:upgrade:local": "npm run prepare:auth-upgrade && LITE_LOCAL_SUPABASE_TESTS=1 node --test --test-timeout=600000 test/upgrade-local.test.mjs",
+    "prepare:auth-upgrade": "npm run build && node scripts/prepare-auth-upgrade.mjs"
   },
   "dependencies": {
     "kysely": "0.28.11"
