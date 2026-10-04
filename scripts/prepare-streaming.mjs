@@ -1,0 +1,14 @@
+import "./prepare-baseline.mjs";
+import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { patchStreaming } from "./patch-streaming.mjs";
+const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const target = resolve(root, ".generated/streaming/node_modules/@supabase/lite");
+await mkdir(dirname(target), { recursive: true });
+await rm(target, { recursive: true, force: true });
+await cp(resolve(root, ".generated/baseline/node_modules/@supabase/lite"), target, { recursive: true });
+const cli = resolve(target, "dist/cli/index.js");
+await writeFile(cli, patchStreaming(await readFile(cli, "utf8")));
+await cp(resolve(root, "dist/upgrade/sqlite-streaming.js"), resolve(target, "dist/cli/sqlite-streaming.js"));
+console.log("Prepared Node SQLite streaming upgrades over the verified Lite baseline");

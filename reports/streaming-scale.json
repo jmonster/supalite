@@ -1,0 +1,819 @@
+{
+  "recordedAt": "2026-10-04T00:44:53.792Z",
+  "baselineRecordedAt": "2026-10-04T00:08:02.849Z",
+  "environment": {
+    "node": "v24.19.0",
+    "pglite": "0.4.5",
+    "platform": "linux",
+    "architecture": "x64",
+    "temporaryFilesystemTypeHex": "0x794c7630"
+  },
+  "artifactSha256": {
+    "baselineCli": "b4646e383c5de5962afb49adbb4eb20ac6b58bef17c64c5a7c7e80d731178600",
+    "streamingCli": "03bb09dd92794f71c0fb98e660c62a14c71cca5a5fbcec6019f9ca6c05d7bf0c",
+    "streamingHelper": "ed978477ec6aa6c382d63e823fe01aa994103bb5b2804f962ae750eccf08ad84"
+  },
+  "method": {
+    "comparison": "Successful stock and current direct pipeline use the same retained fixtures and 1024 MiB old-space allowance. Stock was observed earlier; the current direct runs were recorded later.",
+    "repetitions": 1,
+    "limitations": "Fixed run order, uncontrolled warm filesystem cache, no statistical speed conclusion. No hosted/network target latency or billing measurement.",
+    "fixtures": "Highly compressible repeated text/JSON with row-specific prefixes, no Auth data. Small is 384 rows/3 MiB; large is 12288 rows/96 MiB.",
+    "timing": "Fixture creation and parent source hashing are excluded. CLI wall time includes startup/readiness/audit/rehearsal/cleanup. Target wall time includes startup, the migration pipeline, bounded verification and cleanup. Apply phase can include deferred PGlite initialization, especially for small fixtures.",
+    "memory": "Observed process RSS and sampled heap peaks, including target verification. V8 old-space is not total JavaScript heap, RSS or container memory. Native/WASM, page cache and cgroup usage are different quantities. Fatal OOM can prevent final samples, so failed-run samples may miss the terminal peak.",
+    "temporarySql": "Logical application SQL export bytes observed through Node filesystem instrumentation; not physical-device or chargeable I/O.",
+    "firstWrite": "Yielded/materialized application rows before the first target application-data write; COUNT queries have already visited each table.",
+    "cpu": "Process user/system CPU time summed across threads; CPU time can exceed wall time."
+  },
+  "fixtures": [
+    {
+      "size": "small",
+      "kind": "text",
+      "rows": 384,
+      "rowBytes": 8192,
+      "payloadBytes": 3145728,
+      "tables": [
+        {
+          "schema": "app",
+          "table": "text_a",
+          "rows": 128,
+          "sha256": "760cf82b6c47ecbd0f7d8f76e31a9ec1c60dcaebb62f11763dcd49a7a7ec0124"
+        },
+        {
+          "schema": "app",
+          "table": "text_b",
+          "rows": 128,
+          "sha256": "c1d3ef492718a457f6f7f11b400059eb9efbfcf3c8f9ec5de4cc4efd8461902d"
+        },
+        {
+          "schema": "app",
+          "table": "text_c",
+          "rows": 128,
+          "sha256": "4ba202a1eb09ff35b3c50c53aa3fb85bf8e5dee93f885ce1a7340d91d7eae0f5"
+        }
+      ],
+      "sqliteBytes": 3358720,
+      "sourceDbSha256": "a2f619cfaca594c2b1f5138cda5c299ab9414ba89b39d69f3ee1c85cd08eef09"
+    },
+    {
+      "size": "small",
+      "kind": "json",
+      "rows": 384,
+      "rowBytes": 8192,
+      "payloadBytes": 3145728,
+      "tables": [
+        {
+          "schema": "app",
+          "table": "json_rows",
+          "rows": 384,
+          "sha256": "2fdbf69564fc1872e74d6e281c161e14ae9cdf7c6905435f95987713a5643667"
+        }
+      ],
+      "sqliteBytes": 3350528,
+      "sourceDbSha256": "aa964d9a2a7b50bb406a512a436026c21eb94b77221a7727230e4a69dc0081c2"
+    },
+    {
+      "size": "large",
+      "kind": "text",
+      "rows": 12288,
+      "rowBytes": 8192,
+      "payloadBytes": 100663296,
+      "tables": [
+        {
+          "schema": "app",
+          "table": "text_a",
+          "rows": 4096,
+          "sha256": "e5dc5174cd5e9a8bda76809cdd78731e155b5d669684ddae5ce81c646e2563ee"
+        },
+        {
+          "schema": "app",
+          "table": "text_b",
+          "rows": 4096,
+          "sha256": "9b5793d273b7d77f822e80321718d84965768c4af8fdda47d358f424852520a7"
+        },
+        {
+          "schema": "app",
+          "table": "text_c",
+          "rows": 4096,
+          "sha256": "df559a4c2872451848b304c59eeb78214f9cd4b42d06d0cfd7a9b3340f30ac7d"
+        }
+      ],
+      "sqliteBytes": 106971136,
+      "sourceDbSha256": "b9d7eca5fb931f11d20083f052847cc42f8375de909152261e9427a1fb9a1626"
+    },
+    {
+      "size": "large",
+      "kind": "json",
+      "rows": 12288,
+      "rowBytes": 8192,
+      "payloadBytes": 100663296,
+      "tables": [
+        {
+          "schema": "app",
+          "table": "json_rows",
+          "rows": 12288,
+          "sha256": "ad57223d02e1ea678f6a3b0d870e5e6fb06e40f21f8392bcf16a6425918014a9"
+        }
+      ],
+      "sqliteBytes": 106979328,
+      "sourceDbSha256": "ee9a91b457d3c23eab74a1db11f335d2d0291d5e9cd5f231bdb7049867045a53"
+    }
+  ],
+  "runs": [
+    {
+      "workload": "small/text",
+      "route": "cli",
+      "flavor": "baseline",
+      "oldSpaceLimitMiB": 1024,
+      "outcome": "pass",
+      "wallMs": 3190,
+      "observedProcessRssKiB": 1084968,
+      "sampledHeapBytes": 52384184,
+      "sourceUnchanged": true,
+      "sourceDbSha256": "a2f619cfaca594c2b1f5138cda5c299ab9414ba89b39d69f3ee1c85cd08eef09",
+      "temporarySqlExport": {
+        "files": 0,
+        "writtenBytes": 0,
+        "readBytes": 0,
+        "remainingBytes": 0
+      },
+      "processCpuMicroseconds": {
+        "userCPUTime": 5470838,
+        "systemCPUTime": 1036061
+      }
+    },
+    {
+      "workload": "small/text",
+      "route": "target",
+      "flavor": "baseline",
+      "oldSpaceLimitMiB": 1024,
+      "outcome": "pass",
+      "wallMs": 3214,
+      "observedProcessRssKiB": 1291728,
+      "sampledHeapBytes": 58404504,
+      "sourceUnchanged": true,
+      "sourceDbSha256": "a2f619cfaca594c2b1f5138cda5c299ab9414ba89b39d69f3ee1c85cd08eef09",
+      "temporarySqlExport": {
+        "files": 0,
+        "writtenBytes": 0,
+        "readBytes": 0,
+        "remainingBytes": 0
+      },
+      "processCpuMicroseconds": {
+        "userCPUTime": 5347513,
+        "systemCPUTime": 935327
+      },
+      "applyMs": 67.839,
+      "pipelineMs": 2711.781,
+      "payloadMiBPerApplySecond": 44.223,
+      "firstWriteMaterializedRows": 384,
+      "maxTargetSqlBytes": 413900,
+      "verifiedTables": [
+        {
+          "table": "text_a",
+          "rows": 128,
+          "sha256": "760cf82b6c47ecbd0f7d8f76e31a9ec1c60dcaebb62f11763dcd49a7a7ec0124",
+          "maxPageRows": 32
+        },
+        {
+          "table": "text_b",
+          "rows": 128,
+          "sha256": "c1d3ef492718a457f6f7f11b400059eb9efbfcf3c8f9ec5de4cc4efd8461902d",
+          "maxPageRows": 32
+        },
+        {
+          "table": "text_c",
+          "rows": 128,
+          "sha256": "4ba202a1eb09ff35b3c50c53aa3fb85bf8e5dee93f885ce1a7340d91d7eae0f5",
+          "maxPageRows": 32
+        }
+      ]
+    },
+    {
+      "workload": "small/json",
+      "route": "cli",
+      "flavor": "baseline",
+      "oldSpaceLimitMiB": 1024,
+      "outcome": "pass",
+      "wallMs": 3102,
+      "observedProcessRssKiB": 1080892,
+      "sampledHeapBytes": 58107952,
+      "sourceUnchanged": true,
+      "sourceDbSha256": "aa964d9a2a7b50bb406a512a436026c21eb94b77221a7727230e4a69dc0081c2",
+      "temporarySqlExport": {
+        "files": 0,
+        "writtenBytes": 0,
+        "readBytes": 0,
+        "remainingBytes": 0
+      },
+      "processCpuMicroseconds": {
+        "userCPUTime": 5406720,
+        "systemCPUTime": 978747
+      }
+    },
+    {
+      "workload": "small/json",
+      "route": "target",
+      "flavor": "baseline",
+      "oldSpaceLimitMiB": 1024,
+      "outcome": "pass",
+      "wallMs": 3186,
+      "observedProcessRssKiB": 1247668,
+      "sampledHeapBytes": 68332072,
+      "sourceUnchanged": true,
+      "sourceDbSha256": "aa964d9a2a7b50bb406a512a436026c21eb94b77221a7727230e4a69dc0081c2",
+      "temporarySqlExport": {
+        "files": 0,
+        "writtenBytes": 0,
+        "readBytes": 0,
+        "remainingBytes": 0
+      },
+      "processCpuMicroseconds": {
+        "userCPUTime": 5225370,
+        "systemCPUTime": 989798
+      },
+      "applyMs": 77.148,
+      "pipelineMs": 2700.555,
+      "payloadMiBPerApplySecond": 38.886,
+      "firstWriteMaterializedRows": 384,
+      "maxTargetSqlBytes": 410626,
+      "verifiedTables": [
+        {
+          "table": "json_rows",
+          "rows": 384,
+          "sha256": "2fdbf69564fc1872e74d6e281c161e14ae9cdf7c6905435f95987713a5643667",
+          "maxPageRows": 32
+        }
+      ]
+    },
+    {
+      "workload": "large/text",
+      "route": "cli",
+      "flavor": "baseline",
+      "oldSpaceLimitMiB": 1024,
+      "outcome": "pass",
+      "wallMs": 7077,
+      "observedProcessRssKiB": 1099324,
+      "sampledHeapBytes": 275119120,
+      "sourceUnchanged": true,
+      "sourceDbSha256": "b9d7eca5fb931f11d20083f052847cc42f8375de909152261e9427a1fb9a1626",
+      "temporarySqlExport": {
+        "files": 0,
+        "writtenBytes": 0,
+        "readBytes": 0,
+        "remainingBytes": 0
+      },
+      "processCpuMicroseconds": {
+        "userCPUTime": 9727438,
+        "systemCPUTime": 1261806
+      }
+    },
+    {
+      "workload": "large/text",
+      "route": "target",
+      "flavor": "baseline",
+      "oldSpaceLimitMiB": 1024,
+      "outcome": "pass",
+      "wallMs": 5038,
+      "observedProcessRssKiB": 1293984,
+      "sampledHeapBytes": 286176512,
+      "sourceUnchanged": true,
+      "sourceDbSha256": "b9d7eca5fb931f11d20083f052847cc42f8375de909152261e9427a1fb9a1626",
+      "temporarySqlExport": {
+        "files": 0,
+        "writtenBytes": 0,
+        "readBytes": 0,
+        "remainingBytes": 0
+      },
+      "processCpuMicroseconds": {
+        "userCPUTime": 7952473,
+        "systemCPUTime": 1216270
+      },
+      "applyMs": 1492.217,
+      "pipelineMs": 4171.265,
+      "payloadMiBPerApplySecond": 64.334,
+      "firstWriteMaterializedRows": 12288,
+      "maxTargetSqlBytes": 413999,
+      "verifiedTables": [
+        {
+          "table": "text_a",
+          "rows": 4096,
+          "sha256": "e5dc5174cd5e9a8bda76809cdd78731e155b5d669684ddae5ce81c646e2563ee",
+          "maxPageRows": 32
+        },
+        {
+          "table": "text_b",
+          "rows": 4096,
+          "sha256": "9b5793d273b7d77f822e80321718d84965768c4af8fdda47d358f424852520a7",
+          "maxPageRows": 32
+        },
+        {
+          "table": "text_c",
+          "rows": 4096,
+          "sha256": "df559a4c2872451848b304c59eeb78214f9cd4b42d06d0cfd7a9b3340f30ac7d",
+          "maxPageRows": 32
+        }
+      ]
+    },
+    {
+      "workload": "large/text",
+      "route": "cli",
+      "flavor": "baseline",
+      "oldSpaceLimitMiB": 128,
+      "outcome": "heap-exhaustion",
+      "wallMs": 3678,
+      "observedProcessRssKiB": 1023324,
+      "sampledHeapBytes": 36623528,
+      "sourceUnchanged": true,
+      "sourceDbSha256": "b9d7eca5fb931f11d20083f052847cc42f8375de909152261e9427a1fb9a1626",
+      "failureEvidence": "Verified fatal JavaScript heap exhaustion in child stderr"
+    },
+    {
+      "workload": "large/text",
+      "route": "target",
+      "flavor": "baseline",
+      "oldSpaceLimitMiB": 128,
+      "outcome": "heap-exhaustion",
+      "wallMs": 3323,
+      "observedProcessRssKiB": 1314508,
+      "sampledHeapBytes": 40877768,
+      "sourceUnchanged": true,
+      "sourceDbSha256": "b9d7eca5fb931f11d20083f052847cc42f8375de909152261e9427a1fb9a1626",
+      "failureEvidence": "Verified fatal JavaScript heap exhaustion in child stderr"
+    },
+    {
+      "workload": "large/json",
+      "route": "cli",
+      "flavor": "baseline",
+      "oldSpaceLimitMiB": 1024,
+      "outcome": "pass",
+      "wallMs": 7185,
+      "observedProcessRssKiB": 1276824,
+      "sampledHeapBytes": 298104552,
+      "sourceUnchanged": true,
+      "sourceDbSha256": "ee9a91b457d3c23eab74a1db11f335d2d0291d5e9cd5f231bdb7049867045a53",
+      "temporarySqlExport": {
+        "files": 0,
+        "writtenBytes": 0,
+        "readBytes": 0,
+        "remainingBytes": 0
+      },
+      "processCpuMicroseconds": {
+        "userCPUTime": 9768140,
+        "systemCPUTime": 1094441
+      }
+    },
+    {
+      "workload": "large/json",
+      "route": "target",
+      "flavor": "baseline",
+      "oldSpaceLimitMiB": 1024,
+      "outcome": "pass",
+      "wallMs": 5846,
+      "observedProcessRssKiB": 1437984,
+      "sampledHeapBytes": 460458632,
+      "sourceUnchanged": true,
+      "sourceDbSha256": "ee9a91b457d3c23eab74a1db11f335d2d0291d5e9cd5f231bdb7049867045a53",
+      "temporarySqlExport": {
+        "files": 0,
+        "writtenBytes": 0,
+        "readBytes": 0,
+        "remainingBytes": 0
+      },
+      "processCpuMicroseconds": {
+        "userCPUTime": 8529559,
+        "systemCPUTime": 1160159
+      },
+      "applyMs": 1720.511,
+      "pipelineMs": 4575.58,
+      "payloadMiBPerApplySecond": 55.797,
+      "firstWriteMaterializedRows": 12288,
+      "maxTargetSqlBytes": 410726,
+      "verifiedTables": [
+        {
+          "table": "json_rows",
+          "rows": 12288,
+          "sha256": "ad57223d02e1ea678f6a3b0d870e5e6fb06e40f21f8392bcf16a6425918014a9",
+          "maxPageRows": 32
+        }
+      ]
+    },
+    {
+      "workload": "large/json",
+      "route": "cli",
+      "flavor": "baseline",
+      "oldSpaceLimitMiB": 128,
+      "outcome": "heap-exhaustion",
+      "wallMs": 407,
+      "observedProcessRssKiB": 217692,
+      "sampledHeapBytes": null,
+      "sourceUnchanged": true,
+      "sourceDbSha256": "ee9a91b457d3c23eab74a1db11f335d2d0291d5e9cd5f231bdb7049867045a53",
+      "failureEvidence": "Verified fatal JavaScript heap exhaustion in child stderr"
+    },
+    {
+      "workload": "large/json",
+      "route": "target",
+      "flavor": "baseline",
+      "oldSpaceLimitMiB": 128,
+      "outcome": "heap-exhaustion",
+      "wallMs": 3649,
+      "observedProcessRssKiB": 1172420,
+      "sampledHeapBytes": 125839528,
+      "sourceUnchanged": true,
+      "sourceDbSha256": "ee9a91b457d3c23eab74a1db11f335d2d0291d5e9cd5f231bdb7049867045a53",
+      "failureEvidence": "Verified fatal JavaScript heap exhaustion in child stderr"
+    },
+    {
+      "workload": "small/text",
+      "route": "cli",
+      "flavor": "streaming",
+      "oldSpaceLimitMiB": 1024,
+      "outcome": "pass",
+      "wallMs": 3326,
+      "observedProcessRssKiB": 1078408,
+      "sampledHeapBytes": 67599528,
+      "sourceUnchanged": true,
+      "sourceDbSha256": "a2f619cfaca594c2b1f5138cda5c299ab9414ba89b39d69f3ee1c85cd08eef09",
+      "temporarySqlExport": {
+        "files": 0,
+        "writtenBytes": 0,
+        "readBytes": 0,
+        "remainingBytes": 0
+      },
+      "processCpuMicroseconds": {
+        "userCPUTime": 5739871,
+        "systemCPUTime": 1004512
+      }
+    },
+    {
+      "workload": "small/text",
+      "route": "target",
+      "flavor": "streaming",
+      "oldSpaceLimitMiB": 1024,
+      "outcome": "pass",
+      "wallMs": 3463,
+      "observedProcessRssKiB": 1297204,
+      "sampledHeapBytes": 59587304,
+      "sourceUnchanged": true,
+      "sourceDbSha256": "a2f619cfaca594c2b1f5138cda5c299ab9414ba89b39d69f3ee1c85cd08eef09",
+      "temporarySqlExport": {
+        "files": 0,
+        "writtenBytes": 0,
+        "readBytes": 0,
+        "remainingBytes": 0
+      },
+      "processCpuMicroseconds": {
+        "userCPUTime": 6051864,
+        "systemCPUTime": 1022045
+      },
+      "applyMs": 81.402,
+      "pipelineMs": 2990.539,
+      "payloadMiBPerApplySecond": 36.854,
+      "firstWriteMaterializedRows": 32,
+      "maxTargetSqlBytes": 256642,
+      "verifiedTables": [
+        {
+          "table": "text_a",
+          "rows": 128,
+          "sha256": "760cf82b6c47ecbd0f7d8f76e31a9ec1c60dcaebb62f11763dcd49a7a7ec0124",
+          "maxPageRows": 32
+        },
+        {
+          "table": "text_b",
+          "rows": 128,
+          "sha256": "c1d3ef492718a457f6f7f11b400059eb9efbfcf3c8f9ec5de4cc4efd8461902d",
+          "maxPageRows": 32
+        },
+        {
+          "table": "text_c",
+          "rows": 128,
+          "sha256": "4ba202a1eb09ff35b3c50c53aa3fb85bf8e5dee93f885ce1a7340d91d7eae0f5",
+          "maxPageRows": 32
+        }
+      ],
+      "sourceSnapshotReleased": true
+    },
+    {
+      "workload": "small/json",
+      "route": "cli",
+      "flavor": "streaming",
+      "oldSpaceLimitMiB": 1024,
+      "outcome": "pass",
+      "wallMs": 3459,
+      "observedProcessRssKiB": 1075036,
+      "sampledHeapBytes": 67115920,
+      "sourceUnchanged": true,
+      "sourceDbSha256": "aa964d9a2a7b50bb406a512a436026c21eb94b77221a7727230e4a69dc0081c2",
+      "temporarySqlExport": {
+        "files": 0,
+        "writtenBytes": 0,
+        "readBytes": 0,
+        "remainingBytes": 0
+      },
+      "processCpuMicroseconds": {
+        "userCPUTime": 5914083,
+        "systemCPUTime": 1126412
+      }
+    },
+    {
+      "workload": "small/json",
+      "route": "target",
+      "flavor": "streaming",
+      "oldSpaceLimitMiB": 1024,
+      "outcome": "pass",
+      "wallMs": 3438,
+      "observedProcessRssKiB": 1230888,
+      "sampledHeapBytes": 69239728,
+      "sourceUnchanged": true,
+      "sourceDbSha256": "aa964d9a2a7b50bb406a512a436026c21eb94b77221a7727230e4a69dc0081c2",
+      "temporarySqlExport": {
+        "files": 0,
+        "writtenBytes": 0,
+        "readBytes": 0,
+        "remainingBytes": 0
+      },
+      "processCpuMicroseconds": {
+        "userCPUTime": 5621817,
+        "systemCPUTime": 1005794
+      },
+      "applyMs": 94.008,
+      "pipelineMs": 2937.85,
+      "payloadMiBPerApplySecond": 31.912,
+      "firstWriteMaterializedRows": 32,
+      "maxTargetSqlBytes": 254617,
+      "verifiedTables": [
+        {
+          "table": "json_rows",
+          "rows": 384,
+          "sha256": "2fdbf69564fc1872e74d6e281c161e14ae9cdf7c6905435f95987713a5643667",
+          "maxPageRows": 32
+        }
+      ],
+      "sourceSnapshotReleased": true
+    },
+    {
+      "workload": "large/text",
+      "route": "cli",
+      "flavor": "streaming",
+      "oldSpaceLimitMiB": 1024,
+      "outcome": "pass",
+      "wallMs": 7546,
+      "observedProcessRssKiB": 1098504,
+      "sampledHeapBytes": 172194776,
+      "sourceUnchanged": true,
+      "sourceDbSha256": "b9d7eca5fb931f11d20083f052847cc42f8375de909152261e9427a1fb9a1626",
+      "temporarySqlExport": {
+        "files": 0,
+        "writtenBytes": 0,
+        "readBytes": 0,
+        "remainingBytes": 0
+      },
+      "processCpuMicroseconds": {
+        "userCPUTime": 10479115,
+        "systemCPUTime": 1292187
+      }
+    },
+    {
+      "workload": "large/text",
+      "route": "target",
+      "flavor": "streaming",
+      "oldSpaceLimitMiB": 1024,
+      "outcome": "pass",
+      "wallMs": 5140,
+      "observedProcessRssKiB": 1318856,
+      "sampledHeapBytes": 163943152,
+      "sourceUnchanged": true,
+      "sourceDbSha256": "b9d7eca5fb931f11d20083f052847cc42f8375de909152261e9427a1fb9a1626",
+      "temporarySqlExport": {
+        "files": 0,
+        "writtenBytes": 0,
+        "readBytes": 0,
+        "remainingBytes": 0
+      },
+      "processCpuMicroseconds": {
+        "userCPUTime": 8186084,
+        "systemCPUTime": 1096731
+      },
+      "applyMs": 1558.84,
+      "pipelineMs": 4256.515,
+      "payloadMiBPerApplySecond": 61.584,
+      "firstWriteMaterializedRows": 32,
+      "maxTargetSqlBytes": 256679,
+      "verifiedTables": [
+        {
+          "table": "text_a",
+          "rows": 4096,
+          "sha256": "e5dc5174cd5e9a8bda76809cdd78731e155b5d669684ddae5ce81c646e2563ee",
+          "maxPageRows": 32
+        },
+        {
+          "table": "text_b",
+          "rows": 4096,
+          "sha256": "9b5793d273b7d77f822e80321718d84965768c4af8fdda47d358f424852520a7",
+          "maxPageRows": 32
+        },
+        {
+          "table": "text_c",
+          "rows": 4096,
+          "sha256": "df559a4c2872451848b304c59eeb78214f9cd4b42d06d0cfd7a9b3340f30ac7d",
+          "maxPageRows": 32
+        }
+      ],
+      "sourceSnapshotReleased": true
+    },
+    {
+      "workload": "large/text",
+      "route": "cli",
+      "flavor": "streaming",
+      "oldSpaceLimitMiB": 128,
+      "outcome": "pass",
+      "wallMs": 7734,
+      "observedProcessRssKiB": 1056332,
+      "sampledHeapBytes": 130973568,
+      "sourceUnchanged": true,
+      "sourceDbSha256": "b9d7eca5fb931f11d20083f052847cc42f8375de909152261e9427a1fb9a1626",
+      "temporarySqlExport": {
+        "files": 0,
+        "writtenBytes": 0,
+        "readBytes": 0,
+        "remainingBytes": 0
+      },
+      "processCpuMicroseconds": {
+        "userCPUTime": 11272334,
+        "systemCPUTime": 1281893
+      }
+    },
+    {
+      "workload": "large/text",
+      "route": "target",
+      "flavor": "streaming",
+      "oldSpaceLimitMiB": 128,
+      "outcome": "pass",
+      "wallMs": 5515,
+      "observedProcessRssKiB": 1183716,
+      "sampledHeapBytes": 131329776,
+      "sourceUnchanged": true,
+      "sourceDbSha256": "b9d7eca5fb931f11d20083f052847cc42f8375de909152261e9427a1fb9a1626",
+      "temporarySqlExport": {
+        "files": 0,
+        "writtenBytes": 0,
+        "readBytes": 0,
+        "remainingBytes": 0
+      },
+      "processCpuMicroseconds": {
+        "userCPUTime": 8867009,
+        "systemCPUTime": 1300863
+      },
+      "applyMs": 1615.261,
+      "pipelineMs": 4612.989,
+      "payloadMiBPerApplySecond": 59.433,
+      "firstWriteMaterializedRows": 32,
+      "maxTargetSqlBytes": 256679,
+      "verifiedTables": [
+        {
+          "table": "text_a",
+          "rows": 4096,
+          "sha256": "e5dc5174cd5e9a8bda76809cdd78731e155b5d669684ddae5ce81c646e2563ee",
+          "maxPageRows": 32
+        },
+        {
+          "table": "text_b",
+          "rows": 4096,
+          "sha256": "9b5793d273b7d77f822e80321718d84965768c4af8fdda47d358f424852520a7",
+          "maxPageRows": 32
+        },
+        {
+          "table": "text_c",
+          "rows": 4096,
+          "sha256": "df559a4c2872451848b304c59eeb78214f9cd4b42d06d0cfd7a9b3340f30ac7d",
+          "maxPageRows": 32
+        }
+      ],
+      "sourceSnapshotReleased": true
+    },
+    {
+      "workload": "large/json",
+      "route": "cli",
+      "flavor": "streaming",
+      "oldSpaceLimitMiB": 1024,
+      "outcome": "pass",
+      "wallMs": 7967,
+      "observedProcessRssKiB": 1105724,
+      "sampledHeapBytes": 160542160,
+      "sourceUnchanged": true,
+      "sourceDbSha256": "ee9a91b457d3c23eab74a1db11f335d2d0291d5e9cd5f231bdb7049867045a53",
+      "temporarySqlExport": {
+        "files": 0,
+        "writtenBytes": 0,
+        "readBytes": 0,
+        "remainingBytes": 0
+      },
+      "processCpuMicroseconds": {
+        "userCPUTime": 10792911,
+        "systemCPUTime": 1218505
+      }
+    },
+    {
+      "workload": "large/json",
+      "route": "target",
+      "flavor": "streaming",
+      "oldSpaceLimitMiB": 1024,
+      "outcome": "pass",
+      "wallMs": 5927,
+      "observedProcessRssKiB": 1253400,
+      "sampledHeapBytes": 175577672,
+      "sourceUnchanged": true,
+      "sourceDbSha256": "ee9a91b457d3c23eab74a1db11f335d2d0291d5e9cd5f231bdb7049867045a53",
+      "temporarySqlExport": {
+        "files": 0,
+        "writtenBytes": 0,
+        "readBytes": 0,
+        "remainingBytes": 0
+      },
+      "processCpuMicroseconds": {
+        "userCPUTime": 8190759,
+        "systemCPUTime": 1206502
+      },
+      "applyMs": 1787.31,
+      "pipelineMs": 4653.257,
+      "payloadMiBPerApplySecond": 53.712,
+      "firstWriteMaterializedRows": 32,
+      "maxTargetSqlBytes": 254679,
+      "verifiedTables": [
+        {
+          "table": "json_rows",
+          "rows": 12288,
+          "sha256": "ad57223d02e1ea678f6a3b0d870e5e6fb06e40f21f8392bcf16a6425918014a9",
+          "maxPageRows": 32
+        }
+      ],
+      "sourceSnapshotReleased": true
+    },
+    {
+      "workload": "large/json",
+      "route": "cli",
+      "flavor": "streaming",
+      "oldSpaceLimitMiB": 128,
+      "outcome": "pass",
+      "wallMs": 8265,
+      "observedProcessRssKiB": 1049260,
+      "sampledHeapBytes": 129346200,
+      "sourceUnchanged": true,
+      "sourceDbSha256": "ee9a91b457d3c23eab74a1db11f335d2d0291d5e9cd5f231bdb7049867045a53",
+      "temporarySqlExport": {
+        "files": 0,
+        "writtenBytes": 0,
+        "readBytes": 0,
+        "remainingBytes": 0
+      },
+      "processCpuMicroseconds": {
+        "userCPUTime": 11595308,
+        "systemCPUTime": 1398563
+      }
+    },
+    {
+      "workload": "large/json",
+      "route": "target",
+      "flavor": "streaming",
+      "oldSpaceLimitMiB": 128,
+      "outcome": "pass",
+      "wallMs": 6299,
+      "observedProcessRssKiB": 1181620,
+      "sampledHeapBytes": 140998048,
+      "sourceUnchanged": true,
+      "sourceDbSha256": "ee9a91b457d3c23eab74a1db11f335d2d0291d5e9cd5f231bdb7049867045a53",
+      "temporarySqlExport": {
+        "files": 0,
+        "writtenBytes": 0,
+        "readBytes": 0,
+        "remainingBytes": 0
+      },
+      "processCpuMicroseconds": {
+        "userCPUTime": 9462793,
+        "systemCPUTime": 1300212
+      },
+      "applyMs": 1789.696,
+      "pipelineMs": 5018.717,
+      "payloadMiBPerApplySecond": 53.64,
+      "firstWriteMaterializedRows": 32,
+      "maxTargetSqlBytes": 254679,
+      "verifiedTables": [
+        {
+          "table": "json_rows",
+          "rows": 12288,
+          "sha256": "ad57223d02e1ea678f6a3b0d870e5e6fb06e40f21f8392bcf16a6425918014a9",
+          "maxPageRows": 32
+        }
+      ],
+      "sourceSnapshotReleased": true
+    }
+  ],
+  "verification": {
+    "publishedBaselineFiles": 77,
+    "nativeSelectTextParity": true,
+    "retainedFixtureByteIdentity": true,
+    "allSourceContentsPreserved": true,
+    "allSuccessfulTargetContentsVerified": true
+  },
+  "passed": true
+}

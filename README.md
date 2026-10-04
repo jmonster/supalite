@@ -1,34 +1,35 @@
 # Supalite
 
-This repository preserves the published `@supabase/lite` **0.11.0** npm distribution as a reproducible baseline.
+Node SQLite upgrades stream application rows through the existing formatter into bounded target batches, without a temporary SQL export. The published `@supabase/lite` **0.11.0** distribution remains an unmodified baseline.
+
+The pipeline completes the recorded 96 MiB text/JSON upgrades under a 128 MiB V8 old-space limit that exhausts the stock CLI. Successful-stock timing comparisons are included too: this change bounds application buffering, with no claim of a universal speedup or lower hosting cost. PGlite/native memory remains substantial. [Behavior, tradeoffs and measurements](docs/streaming-upgrade.md)
 
 ## Contents
 
-- `upstream/lite-0.11.0/`: all 77 files from the [published npm tarball](https://registry.npmjs.org/@supabase/lite/-/lite-0.11.0.tgz), with their original bytes and file modes
-- `upstream/manifest.json`: package version, npm integrity, tarball SHA-256, and each file's SHA-256, size, and mode
-- `scripts/prepare-baseline.mjs`: validates the installed package, lockfile integrity, and complete vendored distribution, then copies the vendored files into `.generated/baseline/node_modules/@supabase/lite/`
-- `test/`: basic integration smoke tests using `@supabase/supabase-js` with the Node SQLite, libSQL, and PGlite adapters
-
-The npm artifact contains bundled JavaScript, type declarations, and package documentation. It does not contain the original upstream TypeScript implementation. The files under `upstream/lite-0.11.0/` are the published distribution.
+- `upstream/lite-0.11.0/`: all 77 published files, with their original bytes and modes
+- `upstream/manifest.json`: npm provenance and file checksums
+- `src/upgrade/sqlite-streaming.ts`: native row iteration, counted read snapshots, cleanup and bounded batching
+- `scripts/patch-streaming.mjs`: exact-hash guarded integration into a generated CLI
+- `test/`: adapter parity, target batching, snapshot ownership, failure and cancellation tests
+- `scripts/benchmark-streaming.mjs`: opt-in actual CLI and shared-target comparisons
+- `reports/`: measured results and runtime compatibility
 
 ## Run
 
-Requires Node.js 24 or later.
+Requires Node.js 24 or later:
 
 ```sh
 npm ci
 npm test
 ```
 
-`npm test` first verifies and prepares the baseline, then creates a table on each adapter and checks SDK insert, select, equality-filter, and exact-count operations. Schema setup uses the package's migrator. These smoke tests do not establish comprehensive compatibility.
+Tests build the TypeScript, verify the baseline and create `.generated/streaming/`. Large benchmarks are opt-in; see the [reproduction commands](docs/streaming-upgrade.md#reproduce).
 
-To verify and copy the distribution without running the smoke tests:
+The npm artifact does not include its original upstream TypeScript. Generated files and dependencies are ignored; the vendored distribution is tracked. To verify and copy just the baseline:
 
 ```sh
 npm run prepare:baseline
 ```
-
-Generated files and installed dependencies are ignored; the vendored `dist/` files are tracked.
 
 ## License
 
