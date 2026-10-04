@@ -7,6 +7,7 @@ import * as he from "node:fs/promises";
 import he__default, { stat as stat$1 } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { createConnection } from "@supabase/lite/sqlite";
+import { prepareFunctions } from "../functions/runner.js";
 import { s } from "jsonv-ts";
 import vb from "node:os";
 import { createClient } from "@supabase/supabase-js";
@@ -6067,6 +6068,7 @@ var mr,
                   process.exit(1);
                 }
                 let a = i.config.api?.port ?? fe.default_api_port,
+                  functions = await prepareFunctions(i, { configPath: t.config, host: r.host, port: a }),
                   l = await js(i, { port: a, host: r.host });
                 (Ys(r.host, a),
                   Xs(i.config),
@@ -6076,7 +6078,7 @@ var mr,
                 (c && console.log(mr.default.yellow(` \u26A0 ${c}`)),
                   await i.connection.ping(),
                   zs(async () => {
-                    (await l(), await i.connection.close());
+                    (await functions?.close(), await l(), await i.connection.close());
                   }));
               },
               (r) => {
@@ -11854,7 +11856,8 @@ var qe,
                   o.hasEnabledSystemBaseSchema() &&
                     (await o.ensureSystemSchema());
                 (await Fl(o, { force: true }), console.log());
-                let c = await js(o, { port: a, host: r.host });
+                let functions = await prepareFunctions(o, { configPath: t.config, host: r.host, port: a }),
+                  c = await js(o, { port: a, host: r.host });
                 (Ys(r.host, a),
                   Xs(o.config),
                   Js(o.adminMode),
@@ -11865,9 +11868,45 @@ var qe,
                 let u = Gm(o, { translate: true, force: true }),
                   f = Fe__default.join(process.cwd(), "supabase", Xt(o)),
                   h,
+                  functionsReloadTimer,
+                  functionsReload = Promise.resolve(),
+                  functionsWatchPaths = functions?.watchPaths ?? [],
+                  functionsConfigPath = functions && Fe__default.resolve(await qn(t.config)),
+                  functionsConfigReloadable = /\.(toml|json)$/i.test(functionsConfigPath ?? ""),
+                  watching = true,
+                  containsPath = (directory, file) => file === directory || file.startsWith(directory + Fe__default.sep),
+                  isFunctionChange = (file) => functionsWatchPaths.some((path) => containsPath(path, file)),
                   m = setTimeout(() => {
-                    ((h = u_.watch(f, { ignoreInitial: true })),
+                    ((functionsWatchPaths = functions?.watchPaths ?? []),
+                      (h = u_.watch([f, ...functionsWatchPaths], { ignoreInitial: true })),
+                      h.on("all", (_event, file) => {
+                        if (!watching || !isFunctionChange(file)) return;
+                        if (file === functionsConfigPath && !functionsConfigReloadable) {
+                          console.log("[functions] Restart lite dev to reload executable configuration");
+                          return;
+                        }
+                        clearTimeout(functionsReloadTimer);
+                        functionsReloadTimer = setTimeout(() => {
+                          functionsReload = functionsReload.then(async () => {
+                            if (!watching) return;
+                            const config = functionsConfigReloadable ? ds(await wy(t.config)) : undefined;
+                            const next = config ? { functions: config.functions ?? {}, edge_runtime: config.edge_runtime ?? {} } : {};
+                            if (!o.isValidConfig(next)) throw new Error("Invalid Functions configuration");
+                            await functions.reload(next);
+                            if (!watching) return;
+                            const nextPaths = functions.watchPaths;
+                            const obsolete = functionsWatchPaths.filter((path) =>
+                              ![f, ...nextPaths].some((current) => containsPath(current, path)));
+                            await h.unwatch(obsolete);
+                            if (!watching) return;
+                            h.add(nextPaths);
+                            functionsWatchPaths = nextPaths;
+                            console.log("[functions] Reloaded function project");
+                          }).catch((error) => console.error("[functions] Reload failed:", error.message));
+                        }, 75);
+                      }),
                       h.on("add", async (d) => {
+                        if (!watching || isFunctionChange(d) || !containsPath(f, d)) return;
                         (console.log(),
                           console.log(qe.default.dim(`Migration added: ${d}`)));
                         try {
@@ -11889,8 +11928,12 @@ var qe,
                       }));
                   }, 200);
                 zs(async () => {
-                  (clearTimeout(m),
+                  (watching = false,
+                    clearTimeout(m),
+                    clearTimeout(functionsReloadTimer),
                     await Promise.all([u(), h?.close()]),
+                    await functionsReload,
+                    await functions?.close(),
                     await c(),
                     await o.connection.close());
                 });

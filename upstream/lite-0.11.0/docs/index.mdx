@@ -10,7 +10,7 @@ import banner from '../../../../.github/assets/banner.png';
 
 Supabase Lite (`@supabase/lite`) is a lightweight, TypeScript-native reimplementation of Supabase features while being database agnostic and mainly focused on SQLite. It ships a PostgREST-compatible Data API and a GoTrue-compatible Auth API, so `@supabase/supabase-js` works unchanged against it for the methods it supports. 
 
-SQLite is the primary database (`bun:sqlite`, `node:sqlite`, SQLite WASM, Cloudflare D1/DO), with PGlite and Postgres available as alternative backends. Everything runs in one process: no Docker, no separate database container. You write Postgres DDL in `supabase/schemas/*.sql`, and on the SQLite path it gets translated on the fly. Once your project outgrows SQLite, you can seamlessly upgrade to Supabase.
+SQLite is the primary database (`bun:sqlite`, `node:sqlite`, SQLite WASM, Cloudflare D1/DO), with PGlite and Postgres available as alternative backends. The core runs in one process: no Docker or separate database container is required. For local Edge Functions, run the same CLI under Bun 1.4.2+; native function workers share that process and load ordinary installed packages. You write Postgres DDL in `supabase/schemas/*.sql`, and on the SQLite path it gets translated on the fly. Once your project outgrows SQLite, you can seamlessly upgrade to Supabase.
 
 Supabase Lite supplements Supabase rather than replacing it. It implements roughly 60% of the most-used `supabase-js` surface, the subset most useful for fast prototyping, with a clear upgrade path to hosted or self-hosted Supabase when a project outgrows it.
 
@@ -26,7 +26,7 @@ Supabase Lite is pre-1.0 / alpha. APIs, config shape, and the on-disk format may
 | Auth | Partial | 13 backend endpoints implemented (email/password, OTP, sessions, password recovery, OAuth sign-in for `github`/`google`). Other OAuth providers, anonymous sign-in, manual identity linking, admin API, and MFA are planned. See [Auth overview](/auth/overview). |
 | Storage | Experimental | 20/20 `supabase-js` methods implemented, gated behind `EXPERIMENTAL_STORAGE`. Role-based access and RLS on storage objects are still pending. See [Storage overview](/storage/overview). |
 | Realtime | Not yet | Config schema exists; no WebSocket server or channels yet. See [Realtime](/other/realtime). |
-| Edge Functions | Not yet | Config schema exists; no runtime or `/functions/v1` routes yet. See [Edge Functions](/other/edge-functions). |
+| Edge Functions | Partial | Bun-hosted `dev` / `start` runs default-export `{ fetch }` TypeScript functions in native workers in the same process. SDK invocation, installed packages, environment, and worker policies. Requires Bun 1.4.2+; Deno APIs and import-map resolution are outside the portable subset. See [Edge Functions](/other/edge-functions). |
 
 Compatibility is measured against the `@supabase/supabase-js` surface, not raw Postgres wire-protocol access. Direct SQL clients, `psql`, and third-party Postgres tooling are not a target.
 

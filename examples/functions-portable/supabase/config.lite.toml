@@ -1,0 +1,24 @@
+# Local infrastructure only. Function and application source are unchanged.
+project_id = "functions-portability-fixture"
+
+[api]
+port = 54321
+
+[db]
+driver = "sqlite-postgres"
+url = "./.lite/tasks.sqlite"
+
+[auth]
+enabled = false
+publishable_key = "sb_publishable_portability_demo"
+secret_key = "sb_secret_portability_demo"
+
+[studio]
+enabled = false
+
+[edge_runtime]
+enabled = true
+policy = "oneshot"
+
+[functions.tasks]
+verify_jwt = false
