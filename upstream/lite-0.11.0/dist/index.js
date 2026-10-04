@@ -16613,7 +16613,7 @@ async function Rh(t) {
         : new Response(wt, { status: z, headers: Wa })
     );
   }
-  if (J !== void 0 && C > 0 && B === 0 && C >= J) {
+  if (J !== void 0 && C > 0 && B === 0 && C > J) {
     let z = JSON.stringify({
         code: "PGRST103",
         details: `An offset of ${C} was requested, but there are only ${J} rows.`,
