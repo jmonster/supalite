@@ -10,12 +10,12 @@ The exact original package is preserved in Git commit `514fe6148b412ad4fdfe3eb2b
 
 ## Run
 
-Requires Node.js 24 or later.
+Requires Bun. Tested with Bun 1.4.2.
 
 ```sh
-npm ci
-npm test
-node upstream/lite-0.11.0/dist/cli/index.js --help
+bun install --frozen-lockfile
+bun run test
+bun upstream/lite-0.11.0/dist/cli/index.js --help
 ```
 
 Tests import the tracked working package directly:
