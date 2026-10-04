@@ -1,0 +1,100 @@
+---
+title: "Migrations"
+description: "lite migration and lite db commands, the declarative diff flow, and how they differ from supabase db."
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+Supabase Lite supports both declarative schemas (`supabase/schemas/*.sql`) and imperative migrations (`supabase/migrations/*.sql`), the same two workflows Supabase supports. Migration files use the same filename format as the Supabase CLI (`<14-digit-timestamp>_<name>.sql`) and the same history table (`supabase_migrations.schema_migrations`), so migration files are portable between the two. See the [Supabase migrations guide](https://supabase.com/docs/guides/deployment/database-migrations) for the base concepts.
+
+## Commands
+
+<Tabs>
+  <TabItem label="migration group">
+    | Command | Description |
+    |---|---|
+    | `lite migration new <name>` | Create an empty migration file in `supabase/migrations/` |
+    | `lite migration up` | Apply pending migrations (`--dry-run` lists without applying) |
+    | `lite migration list` | Show applied vs pending migrations |
+
+    `migration down`, `migration repair`, `migration squash`, and `migration fetch` are not registered (🔄 planned).
+  </TabItem>
+  <TabItem label="db group">
+    | Command | Description |
+    |---|---|
+    | `lite db diff` | `--local` semantics; `-f <name>` emits a pg-DDL migration from the declarative schema diff |
+    | `lite db query "<sql>"` | Run a SQL statement against the local DB (renamed from top-level `exec`; supports `--remote`, `--config`) |
+    | `lite db translate "<sql>"` | Translate Postgres SQL to the backend dialect (arg or stdin); pipe into `lite db query` to apply |
+    | `lite db schema` | `[lite]`-only: print current DB schema; `--diff` compares vs `schemas/*.sql`, `--sql` prints raw `CREATE` statements |
+    | `lite db push` | `[experimental]`: push pending migrations to the linked Supalite cloud project |
+    | `lite db reset` | Drop everything, replay migrations, run seed. Does **not** apply declarative `schema_paths`. |
+
+    `db pull`, `db dump`, `db lint`, `db advisors`, and `db start` are not registered.
+  </TabItem>
+</Tabs>
+
+```bash
+lite migration new add_users        # supabase/migrations/<ts>_add_users.sql
+# ... edit the file ...
+lite migration up                    # apply pending migrations
+lite migration list                  # show applied vs pending
+lite db diff -f tweak                # diff schemas/ against applied migrations, emit a new pg-DDL migration
+lite db push                         # push pending migration files to Supalite cloud
+lite config push                     # push config only
+lite cloud deploy                    # push migrations, then config
+lite migration up                    # apply the newly emitted migration
+lite db reset                        # drop everything, replay migrations, run seed
+cat supabase/seed.sql | lite db translate | lite db query   # translate + run ad-hoc SQL
+```
+
+## The declarative diff flow
+
+1. Edit `supabase/schemas/schema.sql` (or the files listed in `[db.migrations].schema_paths`).
+2. Run `lite db diff -f <name>` to compare the live database against the declarative files.
+3. Supabase Lite emits a new migration file under `supabase/migrations/` containing the Postgres DDL needed to close the gap — occasionally more than one, see below.
+4. `lite migration up` applies it (or `lite dev` applies pending migrations automatically on boot, then re-runs the declarative diff).
+
+### When a diff emits more than one file
+
+A new enum value is unusable until the transaction that added it commits, and each migration file is applied in its own transaction. So exactly two shapes split into `<name>_1.sql`, `<name>_2.sql`, … — a split numbers every file, so there is no unsuffixed file in the set:
+
+- **Adding an enum value and using it in the same diff** — e.g. adding `'archived'` to a status enum and a column defaulting to `'archived'`. The `ALTER TYPE` goes in the first file, everything that uses the new value in the second.
+- **Adding more than one value to the same enum in one diff** — one file per added value. Each statement is anchored on the previous value (`ADD VALUE 'c' AFTER 'b'`), so it references a value that isn't visible until the transaction that added it commits.
+
+Unrelated changes in the same diff do not cause a split: they are ordered ahead of the `ALTER TYPE` and stay in the first file. Nothing else splits — multi-column type changes, added constraints, and view rebuilds all apply in a single transaction.
+
+Migrations and declarative schemas coexist: `lite dev` and the Vite plugin apply pending migrations on boot, then run the declarative diff against `schemas/*.sql`. RLS policies authored directly in migration files are picked up at request time, same as policies from the declarative schema.
+
+On `sqlite-postgres`, each migration's SQL and its history row commit in one transaction, matching the Supabase CLI. Afterward, `lite migration up` rebuilds complete runtime metadata from the ordered SQL stored in that history table, including on a no-op run. The database copy is authoritative: editing or deleting an applied file does not change `lite start`, and a pending migration has no effect until `lite migration up` records it. Invalid or null recorded `statements`, or a live structure that cannot be reproduced from recorded history, requires `lite db reset`.
+
+Destructive deltas (dropped columns/tables, incompatible type changes) aren't auto-emitted: `lite db diff` errors on data-loss rather than generating a lossy migration, and you author those by hand, matching how Supabase's own declarative diff behaves.
+
+## Which SQL dialect to write
+
+- On `sqlite-postgres`: write Postgres SQL in `supabase/migrations/*.sql` and the configured seed files. Lite translates each pending file before one seed transaction. Qualified `public.*` and `auth.*` targets and supported casts use the same [Postgres-to-SQLite translation](/database/postgres-sqlite-translation) as migrations.
+- On `pglite` and `postgres`: write Postgres SQL in migration and seed files. The database runs the SQL directly.
+- On bare `sqlite`: write SQLite DDL in `supabase/sqlite-migrations/*.sql` and native SQLite SQL in seed files. Lite does not translate this path.
+
+## How this differs from `supabase db`
+
+Supabase Lite's CLI aligns to the upstream `supabase` CLI's command shape (currently tracking v2.98.2), but several `db` subcommands aren't registered because they depend on infrastructure Supabase Lite doesn't have (a separate Postgres container, a linked hosted project with a dashboard, `pg_dump`):
+
+| Upstream command | Status in Supabase Lite |
+|---|---|
+| `db push` | Experimental hosted push through the Management API; pending migrations only |
+| `db pull` | Not registered |
+| `db dump` | Not registered |
+| `db lint` | Not registered |
+| `db advisors` | Not registered |
+| `db start` | Not applicable: Supabase Lite is in-process, no separate DB container to start |
+| `migration down` / `repair` / `squash` / `fetch` | Not registered (planned) |
+
+`lite config push` updates only the linked project's config. The lite-only `lite cloud deploy` command composes `db push` followed by `config push`; a database failure prevents the config update. Neither command pushes declarative schema files or seeds.
+
+See [CLI overview](/cli/overview) for the full command reference, including the `cloud` group that replaces some of the management-API surface upstream `supabase` exposes.
+
+## See also
+
+- [Declarative schemas](/database/schemas): what to write in `supabase/schemas/*.sql`.
+- [Postgres → SQLite translation](/database/postgres-sqlite-translation): the DDL translation mechanism migrations rely on.
+- [CLI overview](/cli/overview): the full `lite` command reference.

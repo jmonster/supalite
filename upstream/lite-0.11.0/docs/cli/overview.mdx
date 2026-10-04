@@ -1,0 +1,117 @@
+---
+title: "CLI overview"
+description: "The lite CLI versus the supabase CLI: parity, gaps, and what's still experimental."
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+The `lite` CLI is a small, in-process CLI for local Supabase Lite projects. It mirrors the shape of the upstream [Supabase CLI](https://supabase.com/docs/reference/cli/introduction) (command names, `supabase/` layout, `config.toml` format) but implements only what Supabase Lite needs: there is no Docker stack, no shadow database, and no diff-engine orchestration behind it.
+
+<Aside type="note">
+Command names are aligned to `supabase` CLI v2.98.2. Lite-only commands (`dev`, `repl`, `debug`, `upgrade`) have no upstream equivalent.
+</Aside>
+
+## Install
+
+Install globally to expose the `lite` binary system-wide:
+
+<Tabs sync="pkg-manager">
+<TabItem label="bun">
+```bash
+bun add -g @supabase/lite
+```
+</TabItem>
+<TabItem label="npm">
+```bash
+npm install -g @supabase/lite
+```
+</TabItem>
+<TabItem label="pnpm">
+```bash
+pnpm add -g @supabase/lite
+```
+</TabItem>
+</Tabs>
+
+Or install per-project and run it through your package manager's runner (`bunx lite <cmd>`, `npx lite <cmd>`, `pnpm exec lite <cmd>`).
+
+## Parity table
+
+| Command | lite | supabase | Notes |
+|---|---|---|---|
+| `init` | Yes | Yes | Scaffolds `supabase/` (config, schema, seed, data dir); generates any missing API key(s) into `.env`. Flags differ from upstream. |
+| `generate-keys` | Yes (lite-only) | No | (Re)generates the publishable/secret API key pair and upserts `.env`. |
+| `dev` | Yes (lite-only) | No | Starts the server and watches `schemas/*.sql`, auto-applying on change. Scaffolds the project first if `supabase/` is absent, so it works in an empty directory. |
+| `start` | Yes | Yes | In-process, no watch, no auto-migrate. Requires `lite init` first: upstream runs without a `config.toml`, but lite is code-first and has no Studio to build a schema in an empty database. No Docker stack flags (`-x`, `--ignore-health-check`). |
+| `stop` | No | Yes | Not registered. There's no long-running Docker stack to stop. |
+| `repl` | Yes (lite-only) | No | Interactive REPL with `app`, `client`, `conn`, `db` in scope. |
+| `debug` | Yes (lite-only) | No | Dumps runtime/config info. |
+| `upgrade` | Yes (lite-only) | No | Migrates a Supabase Lite project to hosted or local Supabase. See [Upgrade](/upgrade). |
+| `bootstrap` | No | Yes | Not planned; starter-template scaffolding stays with the upstream CLI. |
+| `db schema` | Yes (lite-only) | No | Prints current DB schema; `--diff` compares against `schemas/*.sql`. |
+| `db diff` | Yes | Yes | Emits a pg-DDL migration from the declarative schema diff. `--local` semantics only, single engine (no migra/pg-delta/pgAdmin choice, no shadow DB). |
+| `db query` | Yes | Yes (as `db query`, previously top-level `exec`) | Runs a SQL statement, from an argument or stdin, against the local DB; splits multi-statement input. Suppresses CLI chrome by default so it's pipeable (`--verbose` prints chrome to stderr). Supports `--remote` and `--config`. |
+| `db translate` | Yes (lite-only) | No | Translate Postgres SQL to the backend dialect (arg or stdin). Composes with `db query` via a pipe. |
+| `db reset` | Yes | Yes | Drops everything, replays migrations, and runs seed. `sqlite-postgres` translates supported Postgres seed SQL. Bare `sqlite` runs native SQLite seed SQL. Does not apply declarative `schema_paths`. |
+| `db push` | Experimental | Yes | Pushes pending Postgres migration files to the linked Supalite cloud project; no seed/roles flags. |
+| `db pull` | No | Yes | Not registered. |
+| `db dump` | No | Yes | Not registered. |
+| `db lint` | No | Yes | Not registered. |
+| `db advisors` | No | Yes | Not registered. |
+| `db start` | No | Yes | Not applicable; there's no separate DB process to start. |
+| `migration new` | Yes | Yes | Creates an empty migration file in `supabase/migrations/`. |
+| `migration up` | Yes | Yes (as `migration up`, no direct upstream verb of the same name for local apply) | Applies pending migrations; `--dry-run` previews without applying. |
+| `migration list` | Yes | Yes | Shows applied vs. pending migrations. |
+| `migration down` | No | Yes | Not registered. |
+| `migration repair` | No | Yes | Not registered. |
+| `migration squash` | No | Yes | Not registered. |
+| `migration fetch` | No | Yes | Not registered. |
+| `login` / `logout` | Experimental | Yes | Email/password against Supabase Lite cloud, not the Supabase Management API. |
+| `link` / `unlink` | Experimental | Yes | Parity at the verb level; `link` has no `--password`/`--skip-pooler`. |
+| `status` | Experimental | Yes | Shows linked project metadata, not Docker container status. |
+| `signup` / `whoami` | Experimental (lite-only) | No | Register/inspect a Supabase Lite cloud account. When hosted email confirmation is enabled, `signup` verifies the six-digit emailed code before it stores the session; the email link can confirm the account in a browser instead. |
+| `config push` | Experimental | Yes | Pushes config only through Supalite's combined project-config endpoint. |
+| `cloud deploy` | Experimental (lite-only) | No | Runs database push followed by config push. It does not push declarative schemas or seed files. |
+| `cloud diff` | Experimental (lite-only) | No | Lists pending cloud migrations; `--sql` prints their raw SQL. |
+| `projects list` / `create` | Experimental | Yes | Flags differ (no `--org-id`/`--region`). |
+| `projects api-keys` / `delete` | No | Yes | Not registered. |
+| `functions *` | No | Yes | Edge Functions are not implemented yet. |
+| `gen types` / `gen signing-key` | No | Yes | Not implemented yet. |
+| `seed buckets` | No | Yes | Depends on Storage RLS/role support landing first. |
+| `test db` / `test new` | No | Yes | Not applicable on SQLite (no pgTAP). |
+| `services` | No | Yes | Not applicable; there's no Docker stack to list. |
+| Management API groups (`orgs`, `secrets`, `branches`, `domains`, `sso`, `backups`, `snippets`, `postgres-config`, `network-*`, `encryption`, `inspect`, `storage`, `telemetry`) | No | Yes | Deferred; none registered, to keep `--help` output clean. Re-evaluated as Supabase Lite cloud grows a matching surface. |
+
+## What's missing, in one place
+
+If you're coming from the `supabase` CLI, these upstream capabilities have no lite equivalent today:
+
+- **Docker-backed commands**: `stop`, `db start`, `services`. There's no container stack.
+- **`db` toolbox**: `pull`, `dump`, `lint`, `advisors` are not registered.
+- **`migration` toolbox**: `down`, `repair`, `squash`, `fetch` are not registered.
+- **`functions`**: Edge Functions aren't implemented.
+- **`gen`**: no type generation yet.
+- **`seed buckets`, `bootstrap`, `test db`/`test new`**: not planned or blocked on other features.
+- Every Management API group (`orgs`, `secrets`, `branches`, `sso`, `backups`, `snippets`, `postgres-config`, `network-*`, `encryption`, `inspect`, `storage`, `telemetry`): deferred pending Supabase Lite cloud.
+
+## Experimental commands
+
+`login`, `logout`, `status`, `link`, `unlink`, `signup`, `whoami`, `db push`, `config push`, the `cloud` group, and `projects list`/`create` are gated behind Supabase Lite's own experimental flag and talk to **Supabase Lite cloud**, not the Supabase Management API. They print an experimental warning when run. Treat them as unstable: names and flags may change before 1.0.
+
+## Common flags
+
+```bash
+lite init --pglite                      # scaffold with PGlite instead of SQLite
+lite db reset --hard                    # delete the DB file, replay migrations + seed
+lite db schema --diff                   # diff current DB vs schemas/*.sql
+lite db schema --sql                    # print raw CREATE statements
+lite db diff -f tweak                   # emit a migration from the schema diff
+lite db push                            # push pending migrations only
+lite config push                        # push project config only
+lite cloud deploy                       # push migrations, then config
+lite cloud diff --sql                   # print pending migration SQL
+cat supabase/seed.sql | lite db translate | lite db query   # translate + apply ad-hoc SQL
+lite db query "select count(*) from todos"
+```
+
+See [Migrations](/database/migrations) for the migration workflow and [Database backends](/database/backends) for `--pglite`/driver selection. For the full upstream command reference, see the [Supabase CLI reference](https://supabase.com/docs/reference/cli/introduction).

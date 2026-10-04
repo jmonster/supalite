@@ -1,0 +1,106 @@
+import d from "bun:sqlite";
+import m from "node:fs";
+import l from "node:path";
+import { Kysely } from "kysely";
+import { GenericSqliteDialect } from "kysely-generic-sqlite";
+import { SqliteConnection } from "@supabase/lite";
+try {
+  /**
+   * Adding this to avoid warnings from node:sqlite being experimental
+   */
+  const { emitWarning } = process;
+  process.emitWarning = (warning, ...args) => {
+    if (warning.includes("SQLite is an experimental feature")) return;
+    return emitWarning(warning, ...args);
+  };
+} catch {}
+function h(e) {
+  if (!e || e === ":memory:" || e === "file::memory:") return ":memory:";
+  if (!e.startsWith("file:")) return e;
+  let t = e.startsWith("file://") ? e.slice(7) : e.slice(5);
+  return !t || t === ":memory:"
+    ? ":memory:"
+    : l.isAbsolute(t)
+      ? t
+      : l.resolve(process.cwd(), t);
+}
+function w(e, t, r) {
+  return {
+    db: e,
+    query: (s, n, c) => {
+      let a = r(c);
+      try {
+        t.debug && console.log("[bun:sqlite] query", n, a);
+        let i = e.prepare(n, a);
+        if (i.columnNames.length > 0) {
+          let o = i.all();
+          return (t.debug && console.log("[bun:sqlite] rows", o), { rows: o });
+        } else {
+          let { changes: o, lastInsertRowid: p } = i.run();
+          return {
+            numAffectedRows: Number.parseInt(o.toString(), 10),
+            insertId: Number.parseInt(p.toString(), 10),
+          };
+        }
+      } catch (i) {
+        console.error(i);
+        let o = new Error(`Failed to execute query: ${n}
+${JSON.stringify(a)}`);
+        throw ((o.cause = i), (o.code = i?.code), o);
+      }
+    },
+    close: () => e.close(),
+    iterator: (s, n, c) => {
+      let a = r(c);
+      return S(e.prepare(n, a));
+    },
+  };
+}
+async function* S(e, t) {
+  if (!("iterate" in e))
+    throw new Error(
+      "Streaming not supported, please upgrade to Bun@1.1.31 or later",
+    );
+  for (let r of e.iterate(...[])) yield r;
+}
+var u = class extends SqliteConnection {
+  kysely;
+  driver;
+  closed = false;
+  constructor(t = {}) {
+    super(t);
+    let r = h(t.url);
+    if (r !== ":memory:") {
+      let n = l.dirname(r);
+      m.existsSync(n) || m.mkdirSync(n, { recursive: true });
+    }
+    this.driver = new d(r, { strict: true });
+    let s = new GenericSqliteDialect(
+      () => w(this.driver, t, (n) => this.prepareBindParams(n)),
+      (n) => {
+        this.driver.run("pragma foreign_keys = on");
+      },
+    );
+    this.kysely = new Kysely({ dialect: s, plugins: this.withSqlitePlugins() });
+  }
+  async exec(t, ...r) {
+    let s = t.trimStart().toUpperCase(),
+      n = this.prepareBindParams(r);
+    if (s.startsWith("SELECT") || s.startsWith("WITH"))
+      return { rows: this.driver.prepare(t).all(...n) };
+    n.length > 0 ? this.driver.prepare(t).run(...n) : this.driver.exec(t);
+  }
+  async close() {
+    if (!this.closed) {
+      this.closed = true;
+      try {
+        await this.exec("PRAGMA wal_checkpoint(FULL)");
+      } catch {}
+      this.driver.close();
+    }
+  }
+};
+function C(e = {}) {
+  return new u(e);
+}
+export { C as createConnection };

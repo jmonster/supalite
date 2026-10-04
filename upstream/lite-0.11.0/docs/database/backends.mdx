@@ -1,0 +1,118 @@
+---
+title: "Backends"
+description: "SQLite drivers vs PGlite/Postgres: how Supabase Lite picks a database, and how to switch."
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+
+Supabase Lite runs on one of two database families. Which one you're on determines which parts of the Data API, RLS, and schema translation are fully available versus partial or missing. Every other page in this section links back here for "switch backend to get X."
+
+## The two families
+
+Two independent choices are in play. The **SQLite runtime binding** is auto-selected based on where your code runs; the **`driver`** value in `config.toml` picks how your schema DDL is interpreted.
+
+**SQLite backends** run in-process with zero external dependencies. The binding is automatic:
+
+| Runtime | SQLite binding | Selection |
+|---|---|---|
+| Bun | `bun:sqlite` | Automatic |
+| Node.js ≥ 22 | `node:sqlite` | Automatic |
+| Browser | `@sqlite.org/sqlite-wasm` | Automatic |
+| Cloudflare Workers + Durable Objects | workerd / D1 SQLite | `@supabase/lite/workerd` |
+
+On top of the binding, the `driver` value selects the DDL dialect:
+
+- **`sqlite-postgres` (the default)**: you write Postgres DDL in `schemas/*.sql` and Supabase Lite deparses it to SQLite. This is what `lite init` scaffolds, and what every "SQLite path" note in these docs assumes. It doubles as a compatibility check for moving to a real Postgres backend later, since your schema is authored as Postgres.
+- **`sqlite`**: you write raw SQLite DDL yourself, with no translation. This is a niche choice: reach for it only if you specifically want to hand-write SQLite and skip the Postgres layer. Postgres-only features that depend on the translator, including RLS policy parsing, are not available on this bare path.
+
+**Postgres backends** run real Postgres semantics, either embedded or networked:
+
+| Backend | `driver` | Notes |
+|---|---|---|
+| PGlite | `pglite` | In-process WASM Postgres. No separate server. |
+| Postgres | `postgres` | Remote/local Postgres over the `postgres` node driver. |
+
+## The trade-off
+
+**SQLite** is fast, has no external process to run, and works identically in Node, Bun, the browser, and Cloudflare Workers. The cost: no arrays, no range types, no regex engine, and no stored-procedure model. Concretely, on SQLite: `rpc()` doesn't work, range operators (`rangeGt`, etc.) and quantified comparisons (`eq(any)`, etc.) aren't implemented, `textSearch()` is a LIKE-based lexeme approximation rather than real FTS5/tsvector ranking, `regexMatch`/`regexIMatch` only handle simple anchored patterns, and columns can't default to `auth.uid()`. See [Data API divergences](/database/data-api) for the complete list.
+
+**PGlite and Postgres** run your schema as real Postgres. `rpc()`, range types, regex (`~`/`~*`), quantified comparisons, full-text search, and `DEFAULT auth.uid()` on columns all work exactly as they would on hosted Supabase. RLS is enforced natively by Postgres rather than emulated at the application layer. The cost is a slightly heavier runtime (PGlite ships a WASM Postgres build; Postgres requires a running server).
+
+
+## Selecting a backend
+
+Set `driver` and `url` under `[db]` in `supabase/config.toml`:
+
+<Tabs>
+<TabItem label="sqlite-postgres (default)">
+    ```toml
+    [db]
+    driver = "sqlite-postgres"
+    url = "file:./supabase/.temp/data.db"
+    ```
+  </TabItem>
+  <TabItem label="sqlite (raw DDL)">
+    ```toml
+    [db]
+    driver = "sqlite"
+    url = "file:./supabase/.temp/data.db"
+    ```
+  </TabItem>
+  <TabItem label="PGlite">
+    ```toml
+    [db]
+    driver = "pglite"
+    url = "file:./supabase/.temp/data"
+    ```
+  </TabItem>
+<TabItem label="Postgres">
+    ```toml
+    [db]
+    driver = "postgres"
+    url = "postgres://user:password@localhost:5432/postgres"
+    ```
+  </TabItem>
+</Tabs>
+
+`lite init --pglite` scaffolds a project preconfigured for PGlite instead of the default `sqlite-postgres`. Programmatically, pass the driver at connection time:
+
+```ts
+import { createConnection } from "@supabase/lite/sqlite"; // picks the SQLite driver per runtime
+// or
+import { createConnection } from "@supabase/lite/pglite";
+import { createConnection } from "@supabase/lite/postgres";
+```
+
+Postgres connections run with `TimeZone=UTC` by default so `timestamptz` rendering is deterministic regardless of the host's timezone. Override via the `postgresOptions.connection.TimeZone` connection option if you need a different session timezone.
+
+## libsql / Turso
+
+libsql is another SQLite binding, so the same SQLite feature set and [Data API divergences](/database/data-api) apply. Unlike the built-in bindings it is not auto-selected and has no `config.toml` `driver`: you construct the connection in code and pass it to `App`, the same connection-object pattern as [Cloudflare D1](/integrations/frameworks#cloudflare-workers). What it adds on top of local SQLite is remote and replicated databases:
+
+- **Local file / in-memory** — `url: "file:./data.db"` or `":memory:"`.
+- **Remote (Turso)** — a `libsql://` URL plus an `authToken`.
+- **Embedded replica** — a local `url` kept in sync from a `syncUrl` primary.
+
+```ts
+import { App } from "@supabase/lite";
+import { createLibsqlConnection } from "@supabase/lite/libsql";
+
+const connection = await createLibsqlConnection({
+  url: process.env.TURSO_DATABASE_URL,     // file:… | :memory: | libsql://…
+  authToken: process.env.TURSO_AUTH_TOKEN, // remote only
+  ddlDialect: "postgres",                  // or "sqlite" (see families above)
+});
+const app = new App({ connection });
+```
+
+`@libsql/client` is an optional peer dependency; install it alongside Supabase Lite. Every libsql client option (`authToken`, `syncUrl`, `encryptionKey`, `intMode`, …) is accepted on the config. Read more on [embedded usage](/integrations/embedded) and [official docs](https://docs.turso.tech).
+
+## Where this shows up elsewhere
+
+- [Data API divergences](/database/data-api): the exact filter/method gaps on SQLite, all resolved by switching backend.
+- [Row Level Security](/database/rls): SQLite enforces RLS in the application layer; PGlite/Postgres use native Postgres RLS.
+- [Postgres → SQLite translation](/database/postgres-sqlite-translation): only relevant on the SQLite path; PGlite/Postgres run your DDL unmodified.
+- [Functions & triggers](/database/functions-triggers): SQLite supports a PL/pgSQL trigger subset; PGlite/Postgres run full PL/pgSQL.
+
+For the underlying Supabase database concepts (connection pooling, extensions, the Postgres engine Supabase runs in production), see the [Supabase Database overview](https://supabase.com/docs/guides/database/overview).

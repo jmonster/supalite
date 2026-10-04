@@ -1,0 +1,66 @@
+---
+title: "Database overview"
+description: "How Supabase Lite's Postgres-shaped Data API maps onto SQLite, PGlite, and Postgres."
+---
+
+import { Aside, Card, CardGrid } from '@astrojs/starlight/components';
+
+
+Supabase Lite ships a PostgREST-compatible Data API in front of whichever database backend you configure. You write Postgres DDL and call `@supabase/supabase-js` exactly as you would against Supabase; the divergence is in what each backend can execute underneath.
+
+Two dimensions matter for every feature on this page:
+
+- **Which backend you're on.** SQLite (via `bun:sqlite`, `node:sqlite`, `@sqlite.org/sqlite-wasm`, or Cloudflare D1/DO) is the default, zero-dependency path. PGlite and Postgres are full-parity alternatives selected in `supabase/config.toml`. See [Backends](/database/backends).
+- **Which capability you're using.** Core CRUD, comparison/pattern filters, resource embedding, transforms, and RLS all work the same on every backend. `rpc()`, range types, quantified comparisons, real full-text search, and regex are Postgres/PGlite-only.
+
+<Aside type="note">
+Counts and per-method status live in the package's own `STATUS.md` and update on every `npm install`. This page and its siblings describe the shape of the divergence, not exact totals. See [Compatibility](/compatibility) for the rollup.
+</Aside>
+
+## What holds across every backend
+
+- Full CRUD (`select`, `insert`, `update`, `delete`, `upsert`) with `RETURNING`.
+- All comparison filters (`eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`, `notIn`, `is`, `isDistinct`) and all pattern-matching filters (`like`, `ilike`, and their quantified `AllOf`/`AnyOf` forms).
+- Resource embedding: foreign-key joins, `!inner`, spreads, nested embeds, and aggregates (`count`, `sum`, `avg`, `min`, `max`).
+- Transforms: `order`, `limit`, `range`, `single`, `maybeSingle`.
+- Row Level Security: default-deny, `USING`/`WITH CHECK`, permissive/restrictive policies, per-command targeting, role targeting, `auth.uid()`/`auth.jwt()`.
+
+## Where it splits by backend
+
+SQLite has no arrays, ranges, regex engine, or stored-procedure model, so a handful of `supabase-js` methods either don't exist there or run in a reduced form: `rpc()`, range operators, quantified comparisons, real full-text search, and regex matching. See [Data API divergences](/database/data-api) for the full list and workarounds.
+
+Schema authoring, migrations, and RLS enforcement also have SQLite-specific mechanics worth knowing before you hit them in production:
+
+- [Postgres → SQLite translation](/database/postgres-sqlite-translation): how DDL gets rewritten, which column defaults are honored, and the exact error you'll see for unsupported `CHECK`/`DEFAULT` functions.
+- [Row Level Security](/database/rls): works on every backend, but SQLite enforces it at the application layer with specific gaps (`WITH CHECK` subqueries, `DEFAULT auth.uid()`).
+- [Declarative schemas](/database/schemas) and [migrations](/database/migrations): the same `supabase/schemas/*.sql` and `supabase/migrations/*.sql` workflow as Supabase, with SQLite's single-namespace constraint.
+- [Functions & triggers](/database/functions-triggers): a supported subset of PL/pgSQL trigger bodies on SQLite; full PL/pgSQL on Postgres backends.
+
+For the parts of Supabase's database story that behave identically here (the general architecture, product terminology, and Postgres fundamentals), see the [Supabase Database overview](https://supabase.com/docs/guides/database/overview). This site only documents where Supabase Lite diverges.
+
+<CardGrid>
+  <Card title="Backends">
+    SQLite drivers vs PGlite/Postgres: how to pick, how to switch. [Read more →](/database/backends/)
+  </Card>
+  <Card title="Data API divergences">
+    What's unsupported, partial, and fully working on SQLite vs Postgres. [Read more →](/database/data-api/)
+  </Card>
+  <Card title="Row Level Security">
+    Enforcement model per backend and SQLite-specific caveats. [Read more →](/database/rls/)
+  </Card>
+  <Card title="Declarative schemas">
+    Writing Postgres DDL in `supabase/schemas/*.sql`. [Read more →](/database/schemas/)
+  </Card>
+  <Card title="Migrations">
+    `lite migration` / `lite db` commands vs upstream `supabase db`. [Read more →](/database/migrations/)
+  </Card>
+  <Card title="Functions & triggers">
+    The PL/pgSQL trigger subset supported on SQLite. [Read more →](/database/functions-triggers/)
+  </Card>
+  <Card title="Postgres → SQLite translation">
+    The DDL translation mechanism, defaults, and CHECK constraint rules. [Read more →](/database/postgres-sqlite-translation/)
+  </Card>
+  <Card title="Compatibility">
+    Full capability rollup across services. [Read more →](/compatibility/)
+  </Card>
+</CardGrid>

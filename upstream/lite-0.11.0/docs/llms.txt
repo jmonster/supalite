@@ -1,0 +1,52 @@
+# Supabase Lite docs
+
+Bundled with @supabase/lite 0.11.0. Same content as https://docs.lite.dev, which tracks the latest release.
+Files are MDX source (Astro Starlight). Site path -> file: `/` -> `index.mdx`, `/database/rls` -> `database/rls.mdx`.
+
+## Start
+
+- [Introduction](index.mdx): What Supabase Lite is, what's supported today, and how it relates to hosted Supabase.
+- [Quickstart](quickstart.mdx): Install Supabase Lite, scaffold a project, write a schema, and run your first query.
+- [Compatibility](compatibility.mdx): Capability-level support matrix for the Data API, Auth, Storage, RLS, Realtime, and Edge Functions across SQLite, PGlite, and Postgres.
+- [Running Supabase Lite](running.mdx): Choose between the Vite plugin, lite dev, lite start, and embedded/programmatic usage.
+- [Upgrading to Supabase](upgrade.mdx): Migrate a Supabase Lite project to hosted or local Supabase with lite upgrade.
+
+## Database
+
+- [Database overview](database/overview.mdx): How Supabase Lite's Postgres-shaped Data API maps onto SQLite, PGlite, and Postgres.
+- [Backends](database/backends.mdx): SQLite drivers vs PGlite/Postgres: how Supabase Lite picks a database, and how to switch.
+- [Data API divergences](database/data-api.mdx): Where the PostgREST-compatible Data API and supabase-js diverge on SQLite, and the workarounds.
+- [Row Level Security](database/rls.mdx): RLS works on every Supabase Lite backend; SQLite enforces it at the application layer with specific caveats.
+- [Declarative schemas](database/schemas.mdx): Writing Postgres DDL in supabase/schemas/*.sql, and how it maps onto SQLite's single-namespace model.
+- [Migrations](database/migrations.mdx): lite migration and lite db commands, the declarative diff flow, and how they differ from supabase db.
+- [Functions & triggers](database/functions-triggers.mdx): The PL/pgSQL trigger subset supported on SQLite, and what runs unmodified on Postgres backends.
+- [Postgres → SQLite translation](database/postgres-sqlite-translation.mdx): How Supabase Lite auto-translates Postgres DDL to SQLite, and the exact errors you'll see when something isn't supported.
+
+## Auth
+
+- [Auth overview](auth/overview.mdx): GoTrue-compatible Auth API for @supabase/lite: what's implemented, what's planned, and how it fits into supabase-js.
+- [Supported auth flows](auth/supported-flows.mdx): The 13 GoTrue-compatible Auth endpoints Supabase Lite implements, with supabase-js examples.
+- [Email delivery & templates](auth/email.mdx): Configure the email driver, verification links, and customizable transactional email templates for Supabase Lite Auth.
+- [Auth: not supported](auth/not-supported.mdx): Anonymous sign-in, manual identity linking, the admin API, MFA, and OAuth providers beyond github/google are not implemented yet. What's planned vs. not planned, and the hosted-Supabase workaround.
+
+## Storage
+
+- [Storage overview](storage/overview.mdx): Storage API for @supabase/lite: experimental flag, endpoint coverage, and supabase-js parity.
+- [Storage adapters](storage/adapters.mdx): Pluggable storage backends (filesystem, S3-compatible) and transformation adapters (Noop, Sharp, Cloudflare) for Supabase Lite Storage.
+- [Storage limitations](storage/limitations.mdx): What's not yet implemented in Supabase Lite Storage: TUS uploads, webhooks, bucket-list query params, and the S3-compatible server protocol.
+
+## Integrations
+
+- [Vite plugin](integrations/vite.mdx): Run Supabase Lite in-process inside the Vite dev server. The recommended path for Vite frontends.
+- [Embedded / programmatic](integrations/embedded.mdx): Use the App class directly in Bun, Node, browser, or edge runtimes, without the CLI.
+- [Framework guides](integrations/frameworks.mdx): Running Supabase Lite inside Next.js, Cloudflare Workers, and Docker.
+
+## CLI
+
+- [CLI overview](cli/overview.mdx): The lite CLI versus the supabase CLI: parity, gaps, and what's still experimental.
+- [Telemetry](cli/telemetry.mdx): The lite CLI sends anonymous usage telemetry by default. How to disable it.
+
+## Other
+
+- [Edge Functions](other/edge-functions.mdx): Supabase Edge Functions (Deno runtime) are not supported in @supabase/lite. Run a regular server endpoint instead.
+- [Realtime](other/realtime.mdx): Supabase Realtime (channels, presence, broadcast, Postgres Changes) is not implemented in @supabase/lite yet.

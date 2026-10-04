@@ -1,0 +1,115 @@
+---
+title: "Compatibility"
+description: "Capability-level support matrix for the Data API, Auth, Storage, RLS, Realtime, and Edge Functions across SQLite, PGlite, and Postgres."
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Compatibility is measured against the `@supabase/supabase-js` surface: does code written for Supabase keep working when pointed at Supabase Lite. Direct Postgres wire-protocol access (`psql`, raw SQL clients) is not a target.
+
+<Aside type="note">
+This page is a capability-level rollup. The authoritative, per-method matrix ships in-package as `STATUS.md` (with effort/blocker detail in `FEATURES.md`) and updates every `npm install`. If you need an exact count for a specific method, check that file rather than this page.
+</Aside>
+
+## The backend axis
+
+Supabase Lite runs on two families of database backend, and support differs between them:
+
+- **SQLite** (`bun:sqlite`, `node:sqlite`, SQLite WASM, Cloudflare D1/DO): the primary, zero-dependency path. Most gaps below are SQLite-specific platform limits (no range types, no stored procedures, no native full-text ranking).
+- **PGlite / Postgres**: run the same Data API and Auth implementation against a real Postgres engine. Many features that are partial or unsupported on SQLite work natively here, since RLS, `rpc()`, ranges, and regex all fall back to real Postgres behavior.
+
+Switching backends is a config change (`driver = "pglite"` or `"postgres"` in `config.toml`), not a code change. See [Database backends](/database/backends) for setup.
+
+## Data API (PostgREST)
+
+CRUD, filtering, embedding, and RLS over your tables. This is the most complete surface: **54/74** `supabase-js` query-builder methods on SQLite, **72/74** on Postgres/PGlite.
+
+| Capability | SQLite | PGlite | Postgres | Coverage |
+|---|:---:|:---:|:---:|---|
+| Core CRUD (select/insert/update/delete/upsert) | ✅ | ✅ | ✅ | 6/6 on all backends |
+| Comparison filters (eq, gt, in, is, …) | ✅ | ✅ | ✅ | 10/10 on all backends |
+| Pattern matching (like/ilike + quantified) | ✅ | ✅ | ✅ | 6/6 on all backends |
+| Resource embedding (FK joins, `!inner`, spreads, nested, aggregates) | ✅ | ✅ | ✅ | 5/5 on all backends |
+| RLS enforcement | ✅ | ✅ | ✅ | App-layer rewrite on SQLite, native on Postgres/PGlite |
+| Array/JSON containment (`contains`, `containedBy`, `overlaps`) | ⚠️ | ✅ | ✅ | Scalar arrays + shallow objects only on SQLite |
+| Full-text search (fts/plfts/phfts/wfts) | ⚠️ | ✅ | ✅ | LIKE-based lexeme approximation on SQLite, not FTS5/tsvector |
+| Regex (`regexMatch`/`regexIMatch`) | ⚠️ | ✅ | ✅ | Simple anchored/literal patterns only on SQLite |
+| `schema()` (multi-schema) | ⚠️ | ✅ | ✅ | On `sqlite-postgres`, schemas in `api.schemas` are served through `Accept-Profile`/`Content-Profile` (non-public tables are stored as one dotted identifier). No namespace isolation, embeds across two schemas return `PGRST205`, and the bare `sqlite` driver has no schema handling |
+| Advanced postgres features (`rangeGt`, `rpc()`, `eq(any)`, …) | ❌ | ✅ | ✅ | No range types in SQLite. `geojson()` and `rollback()` are the only gaps on Postgres/PGlite. |
+| **Total** | **54/74** | **72/74** | **72/74** |  |
+
+## Auth (GoTrue)
+
+Email/password, OTP, sessions, RLS auth context, and OAuth sign-in with `github`/`google` are solid. Admin API, manual identity linking, other OAuth providers, and MFA are the main gaps, and behave the same regardless of database backend (Auth doesn't have a SQLite/Postgres split the way the Data API does). One exception: on the Cloudflare D1 backend, multi-statement Auth transaction spans (OAuth callback/token writes, email-change and other OTP verification) run best-effort without a wrapping transaction (D1 has no callback transaction API); single-statement guards still prevent auth-code/state reuse. All other backends, including Durable Objects, are fully transactional.
+
+| Capability | SQLite | PGlite | Postgres | Coverage |
+|---|:---:|:---:|:---:|---|
+| Email + password sign-up/sign-in | ✅ | ✅ | ✅ | |
+| Magic link / email OTP | ✅ | ✅ | ✅ | signup, magiclink, recovery, email_change, reauthentication |
+| JWT issuance, refresh rotation, sessions | ✅ | ✅ | ✅ | |
+| Password recovery / resend / reauthenticate | ✅ | ✅ | ✅ | |
+| RLS auth context (`auth.uid()`, `auth.role()`, `auth.jwt()`) | ✅ | ✅ | ✅ | Shared with the Data API |
+| API keys (`sb_publishable_*`/`sb_secret_*`) | ✅ | ✅ | ✅ | Enforced on `/rest/v1`/`/auth/v1` when configured; legacy JWT-as-apikey not supported |
+| OAuth / social sign-in | ⚠️ | ⚠️ | ⚠️ | `github`/`google` only; PKCE + implicit flows, automatic account linking. Other providers (incl. Apple) planned |
+| Anonymous sign-in | 🔄 | 🔄 | 🔄 | Planned |
+| Identity linking | ⚠️ | ⚠️ | ⚠️ | Automatic linking on OAuth sign-in works; manual `linkIdentity`/`unlinkIdentity` planned |
+| Admin user API | 🔄 | 🔄 | 🔄 | Planned |
+| MFA / TOTP / WebAuthn | ⚫ | ⚫ | ⚫ | Not planned |
+| **Total** | **13/63** | **13/63** | **13/63** | 13 backend endpoints implemented; 10 additional `supabase-js` methods are client-side only (N/A) |
+
+See [Auth overview](/auth/overview) and [Not supported](/auth/not-supported) for the full breakdown.
+
+## Storage
+
+Gated behind `EXPERIMENTAL_STORAGE`. CRUD, public buckets, signed URLs, image transforms, and Storage-table RLS work across all database backends.
+
+| Capability | SQLite | PGlite | Postgres | Coverage |
+|---|:---:|:---:|:---:|---|
+| Bucket CRUD | ✅ | ✅ | ✅ | |
+| Object CRUD (upload/download/list/move/copy/remove/info) | ✅ | ✅ | ✅ | |
+| Signed URLs (download, batch, upload) | ✅ | ✅ | ✅ | |
+| Image transforms (Sharp, Cloudflare) | ✅ | ✅ | ✅ | |
+| Storage backends (filesystem, S3-compatible) | ✅ | ✅ | ✅ | |
+| Role-based access (service_role/anon/authenticated gating) | ✅ | ✅ | ✅ | Shared verified JWT/API-key claims; `service_role` bypasses RLS |
+| RLS policies on storage buckets and objects | ✅ | ✅ | ✅ | App-layer AST enforcement on SQLite; native RLS on Postgres/PGlite; canonical path helpers and full operation identifiers on all three |
+| **Total** | **20/20 methods** | **20/20 methods** | **20/20 methods** | `/status` health endpoint also implemented |
+
+See [Storage overview](/storage/overview) and [Storage limitations](/storage/limitations).
+
+## Row Level Security (RLS)
+
+RLS works across all backends but is enforced differently: SQLite rewrites the PostgREST query AST at the application layer, while PGlite/Postgres use native Postgres RLS.
+
+| Feature | SQLite | PGlite | Postgres |
+|---|:---:|:---:|:---:|
+| `ENABLE ROW LEVEL SECURITY`, `USING`, `WITH CHECK` | ✅ | ✅ | ✅ |
+| Permissive / restrictive policies, `FOR` command targeting, `TO role` | ✅ | ✅ | ✅ |
+| `auth.uid()` / `auth.jwt()` in policies | ✅ | ✅ | ✅ |
+| Subquery `WITH CHECK` on INSERT | ❌ | ✅ | ✅ |
+| `DEFAULT auth.uid()` on columns | ❌ | ✅ | ✅ |
+| Standalone `DROP POLICY` / `ALTER POLICY` | ✅ | ✅ | ✅ |
+
+See [Database: RLS](/database/rls) for the enforcement model and workarounds.
+
+## Realtime and Edge Functions
+
+Both are planned but not started: config schemas exist, no runtime yet.
+
+| Product | SQLite | PGlite | Postgres |
+|---|:---:|:---:|:---:|
+| Realtime | 🔄 | 🔄 | 🔄 |
+| Edge Functions | 🔄 | 🔄 | 🔄 |
+
+See [Realtime](/other/realtime) and [Edge Functions](/other/edge-functions) for the planned design.
+
+## Legend
+
+| Icon | Meaning |
+|---|---|
+| ✅ | Supported end-to-end |
+| ⚠️ | Partial, works with caveats |
+| 🔄 | Planned, not built yet |
+| ❌ | Not feasible on this path |
+| ⚫ | Not applicable |
+
+For the full Supabase feature list this compatibility matrix is measured against, see the [Supabase docs](https://supabase.com/docs).

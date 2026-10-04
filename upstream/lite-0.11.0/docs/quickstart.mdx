@@ -1,0 +1,150 @@
+---
+title: "Quickstart"
+description: "Install Supabase Lite, scaffold a project, write a schema, and run your first query."
+---
+
+import { Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+This walks through the minimal path: install, scaffold, write a schema, run a server, query it with `supabase-js`. For the general Supabase local-dev flow this mirrors, see the [Supabase local development guide](https://supabase.com/docs/guides/local-development).
+
+<Steps>
+
+1. **Install**
+
+   Install both `@supabase/lite` and `@supabase/supabase-js`.
+
+   <Tabs sync="pkg-manager">
+   <TabItem label="bun">
+   ```bash
+   bun add @supabase/lite @supabase/supabase-js
+   ```
+   </TabItem>
+   <TabItem label="npm">
+   ```
+   npm install @supabase/lite @supabase/supabase-js
+   ```
+   </TabItem>
+   <TabItem label="pnpm">
+   ```bash
+   pnpm add @supabase/lite @supabase/supabase-js
+   ```
+   </TabItem>
+   </Tabs>
+
+   Add the `-g` flag if you want the `lite` CLI available system-wide instead of per-project.
+
+1. **Scaffold a project**
+
+   <Tabs sync="pkg-manager">
+   <TabItem label="bun">
+   ```bash
+   bunx lite init
+   ```
+   </TabItem>
+   <TabItem label="npm">
+   ```bash
+   npx lite init
+   ```
+   </TabItem>
+   <TabItem label="pnpm">
+   ```bash
+   pnpm exec lite init
+   ```
+   </TabItem>
+   </Tabs>
+
+   This creates a Supabase-compatible `supabase/` directory: `config.toml`, `schemas/schema.sql`, `seed.sql`, and a git-ignored `.temp/data.db` SQLite file.
+
+   `lite dev` scaffolds the same structure on boot if it's missing, so you can skip straight to it in an empty directory. `lite start` requires the scaffold to exist — run `init` first.
+
+1. **Write your schema**
+
+   Write plain Postgres DDL in `supabase/schemas/schema.sql`. On the SQLite path it's translated automatically (`SERIAL` → `INTEGER PRIMARY KEY AUTOINCREMENT`, `NOW()` → `datetime('now')`, and so on).
+
+   A small per-user todos example with RLS enabled:
+
+   ```sql
+   create table todos (
+     id uuid primary key default gen_random_uuid(),
+     user_id uuid not null references auth.users(id) on delete cascade,
+     task text not null,
+     is_complete boolean not null default false,
+     created_at timestamptz not null default now()
+   );
+
+   alter table todos enable row level security;
+
+   create policy "select own todos" on todos for select to authenticated using (auth.uid() = user_id);
+   create policy "insert own todos" on todos for insert to authenticated with check (auth.uid() = user_id);
+   create policy "update own todos" on todos for update to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+   create policy "delete own todos" on todos for delete to authenticated using (auth.uid() = user_id);
+   ```
+
+   Currently, default values using functions support is limited, therefore `DEFAULT auth.uid()` is not supported on the SQLite path. You must supply `user_id` by the client on insert; the `WITH CHECK` policy enforces ownership server-side. The `PATTERNS.md` file shipped in the package has more recipes.
+
+1. **Pick how you run it**
+
+   If your frontend uses Vite, use the [Vite plugin](/integrations/vite): it runs Supabase Lite inline in the Vite dev server, no separate process. Otherwise, use the `lite` CLI directly: see [Running Supabase Lite](/running) to choose between `lite dev` (auto schema-reload) and `lite start` (no watch, CI/prod-like).
+
+   <Tabs sync="pkg-manager">
+   <TabItem label="bun">
+   ```bash
+   bunx lite dev
+   ```
+   </TabItem>
+   <TabItem label="npm">
+   ```bash
+   npx lite dev
+   ```
+   </TabItem>
+   <TabItem label="pnpm">
+   ```bash
+   pnpm exec lite dev
+   ```
+   </TabItem>
+   </Tabs>
+
+   The API is now running at `http://127.0.0.1:54321`. `lite init` also generated a publishable/secret API key pair into root `.env` and printed them.
+
+1. **Create a client**
+
+   ```typescript
+   import { createClient } from "@supabase/supabase-js";
+
+   const supabase = createClient(
+     "http://127.0.0.1:54321",
+     "<sb_publishable_...>"
+   );
+   ```
+
+   Use the printed `sb_publishable_*` key as the anon key. If no keys are configured, `/rest/v1`/`/auth/v1` accept any/no `apikey` (unchanged old behavior). See [API keys](/auth/overview#api-keys).
+
+   If you're using the [Vite plugin](/integrations/vite) instead, the plugin injects `VITE_SUPABASE_URL` (`window.location.origin`) and a dev `VITE_SUPABASE_ANON_KEY`, so the canonical form works with no manual setup:
+
+   ```typescript
+   import { createClient } from "@supabase/supabase-js";
+
+   const supabase = createClient(
+     import.meta.env.VITE_SUPABASE_URL,
+     import.meta.env.VITE_SUPABASE_ANON_KEY,
+   );
+   ```
+
+1. **Run a query**
+
+   ```typescript
+   const { data: { session } } = await supabase.auth.getSession();
+
+   await supabase.from("todos").insert({
+     user_id: session.user.id,
+     task: "Ship the quickstart",
+   });
+
+   const { data, error } = await supabase.from("todos").select("*");
+   ```
+
+   This is standard `supabase-js`, no Supabase Lite-specific API. See [Compatibility](/compatibility) for what else is supported.
+
+</Steps>
+
+For the full Supabase quickstart flow (project structure, general CLI usage) that this mirrors, see the [Supabase local development guide](https://supabase.com/docs/guides/local-development).

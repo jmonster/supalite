@@ -1,0 +1,87 @@
+---
+title: "Vite plugin"
+description: "Run Supabase Lite in-process inside the Vite dev server. The recommended path for Vite frontends."
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+If your frontend uses Vite, this is the recommended way to run Supabase Lite: no separate CLI process, no Docker, no proxy config. The `@supabase/lite/vite` plugin runs the backend inline inside the Vite dev server, so one process serves both your app and the API.
+
+```ts
+// vite.config.ts
+import { defineConfig } from "vite";
+import { supalite } from "@supabase/lite/vite";
+
+export default defineConfig({
+  plugins: [supalite()],
+});
+```
+
+<Aside type="caution">
+Run exactly one backend per project. Don't run `lite dev` or `lite start` at the same time as this plugin, and don't run both CLI backends together. It isn't necessarily a port conflict: two backends driving the same `supabase/` project and SQLite file race migrations and declarative metadata reconciliation. Pick one process model per project; see [Running Supabase Lite](/running).
+</Aside>
+
+## What it does
+
+- Auto-resolves `./supabase/config.toml` from the project root.
+- Applies pending imperative migrations, then the declarative schema diff, on boot.
+- Watches `schemas/*.sql` (and the migrations directory) for hot-reload during `vite`/`vite dev`.
+- Mounts `/auth/v1`, `/rest/v1`, and `/_system` as middleware on the Vite dev/preview server.
+- Injects `VITE_SUPABASE_URL` (the current browser origin, via `window.location.origin`) and the project's resolved `sb_publishable_*` key as `VITE_SUPABASE_ANON_KEY` into `import.meta.env`, so the canonical client snippet works with zero `.env` setup, even with key enforcement on.
+
+<Aside type="caution">
+`vite preview` mounts the API and runs boot-time migrations, but does **not** watch schemas (it simulates production). `vite build` and any standalone production server do not mount the API at all. Use `lite start`, hosted Supabase, or an embedded app there.
+</Aside>
+
+## Client setup
+
+```ts
+import { createClient } from "@supabase/supabase-js";
+
+const client = createClient(
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_ANON_KEY,
+);
+```
+
+Equivalently, since the plugin's default URL is always the current origin:
+
+```ts
+const client = createClient(window.location.origin, "<sb_publishable_...>");
+```
+
+The plugin resolves the project's real `auth.publishable_key` (see [API keys](/auth/overview#api-keys)) and injects it as `VITE_SUPABASE_ANON_KEY`, so a `lite init`'d project works with zero `.env` setup even with key enforcement on. The placeholder `"sb-lite-anon-key"` is only used as a fallback when no project/key is found.
+
+A `.env` value for either `VITE_SUPABASE_URL` or `VITE_SUPABASE_ANON_KEY` always overrides the plugin's injected default. The plugin only fills in what you haven't set, and it resolves your `root`/`envDir`/`envPrefix` the same way Vite itself does, so a value that Vite would expose is a value the plugin sees.
+
+## Options
+
+```ts
+supalite({
+  config: "./supabase/config.toml",
+  migrateOnBoot: true,
+  watchSchema: true,
+  forceSchema: false,
+  initOnBoot: true,
+  prefixes: ["/auth/v1", "/rest/v1", "/_system"],
+  admin: true,
+});
+```
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `config` | string | auto-resolved `./supabase/config.toml` | Path to the project's `config.toml`. Defaults to auto-resolving `./supabase/config.toml` relative to where Vite runs. |
+| `migrateOnBoot` | boolean | `true` | Apply pending imperative migrations, then run the declarative schema diff, when the dev/preview server starts. |
+| `watchSchema` | boolean | `true` | Watch `schemas/*.sql` and the migrations directory for changes and hot-reload the schema. Only takes effect during `vite`/`vite dev`; `vite preview` never watches, regardless of this option. |
+| `forceSchema` | boolean | `false` | Allow the declarative schema diff to apply changes that would otherwise be blocked as data-loss. Logs a warning on boot when enabled. |
+| `initOnBoot` | boolean | `true` | Scaffold the initial `supabase/` structure if it doesn't exist yet, equivalent to `lite init`, before starting. |
+| `prefixes` | string[] | `["/auth/v1", "/rest/v1", "/_system"]` | Which path prefixes the plugin mounts on the Vite server. Only override this if you need to move the API off its default paths. |
+| `admin` | boolean | `true` on loopback | [Admin mode](/running#admin-mode): serve keyless, same-origin, loopback `/rest/v1` requests as `service_role`. A non-loopback Vite host (including bare `vite --host`) defaults it off and requires explicit `admin: true`; config cannot silently re-enable an exposed listener. Preview always disables it. Admin also covers `/storage/v1`, but that prefix is not mounted by default. |
+
+Vite and the Lite CLI use the same host posture: local binding keeps the local admin default, while `vite --host` / `lite dev --host` exposes the listener and disables admin unless explicitly enabled. If a sandbox or tunnel publishes the port, leave admin off even when its local forwarding socket appears loopback.
+
+## Related
+
+- [Running Supabase Lite](/running): how this compares to `lite dev`/`lite start`/embedding.
+- [Embedded / programmatic](/integrations/embedded): the same boot sequence, driven manually instead of by the plugin.
+- Upstream: [Supabase local development](https://supabase.com/docs/guides/local-development), the Docker-based equivalent this plugin replaces for Vite apps.

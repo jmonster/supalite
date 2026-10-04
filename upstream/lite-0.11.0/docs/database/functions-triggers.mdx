@@ -1,0 +1,95 @@
+---
+title: "Functions & triggers"
+description: "The PL/pgSQL trigger subset supported on SQLite, and what runs unmodified on Postgres backends."
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+
+Supabase database functions and triggers are ordinary Postgres features: `CREATE FUNCTION ... LANGUAGE plpgsql` plus `CREATE TRIGGER`. On the SQLite path, Supabase Lite doesn't run PL/pgSQL: it translates a supported subset of trigger function bodies into inline SQLite `CREATE TRIGGER` statements at DDL-translation time. On PGlite/Postgres, full PL/pgSQL runs unmodified. See the [Supabase database functions guide](https://supabase.com/docs/guides/database/functions) and [triggers guide](https://supabase.com/docs/guides/database/postgres/triggers) for the base concepts.
+
+<Aside type="caution">
+Only **trigger functions** (`RETURNS TRIGGER`) are translated on SQLite. Standalone/non-trigger functions and `rpc()` calls into them are not supported there. See [Data API divergences](/database/data-api#not-supported-on-sqlite).
+</Aside>
+
+## How it works
+
+Postgres trigger functions are parsed and stored in a schema-aware registry. Unqualified names resolve against `public`. When the corresponding `CREATE TRIGGER` statement is reached, the function body is inlined directly into a SQLite `CREATE TRIGGER`. Imperative migrations rebuild the registry from ordered migration history, so the function and trigger can live in separate migration files. Only recorded migrations contribute definitions. `SECURITY DEFINER` is silently ignored because SQLite has no privilege model to apply it to.
+
+## Supported statement subset (SQLite)
+
+| Statement | Example | SQLite translation |
+|---|---|---|
+| `NEW.col = expr` | `NEW.updated_at = now()` | `UPDATE table SET updated_at = datetime('now') WHERE rowid = NEW.rowid` |
+| `NEW.col := expr` | `NEW.name := upper(NEW.name)` | Same as above |
+| `INSERT INTO ...` | `INSERT INTO profiles (id) VALUES (NEW.id)` | Passed through inside the trigger body |
+| `UPDATE ...` / `DELETE ...` | Any DML | Passed through inside the trigger body |
+| `RETURN NEW` / `RETURN OLD` | Required in Postgres | Not emitted, implicit in SQLite |
+
+Multiple `NEW.col = expr` assignments in the same function are merged into a single `UPDATE ... SET` statement.
+
+**Trigger options supported:** `BEFORE`/`AFTER` timing, `INSERT`/`UPDATE`/`DELETE` events and combinations, `UPDATE OF col1, col2`, `FOR EACH ROW`. SQLite physical trigger names include the folded table name and are mapped back during introspection, so PostgreSQL trigger names remain scoped per table. `DROP TRIGGER [IF EXISTS] name ON table` removes only that table's trigger.
+
+## Not supported on SQLite
+
+These throw a descriptive error rather than silently dropping:
+
+- `DECLARE` (variable declarations)
+- `IF` / `ELSIF` / `ELSE`
+- `LOOP` (and other iteration constructs)
+- `RAISE`
+- `PERFORM`
+- `SELECT INTO`
+- `EXECUTE`
+- Local variables in general
+- Non-trigger (standalone) functions
+
+If your trigger body needs any of these, either restructure it into the supported subset (see the recipes below), or switch to a Postgres backend where full PL/pgSQL runs. See [Backends](/database/backends).
+
+## Recipes
+
+### `updated_at` timestamp via trigger
+
+```sql
+create or replace function set_updated_at() returns trigger language plpgsql as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+drop trigger if exists set_<thing>_updated_at on <thing>;
+
+create trigger set_<thing>_updated_at
+before update on <thing>
+for each row execute function set_updated_at();
+```
+
+The translator inlines `NEW.updated_at = now()` into a SQLite `UPDATE ... SET updated_at = datetime('now')` trigger body.
+
+### Profile row on signup (`handle_new_user`)
+
+```sql
+create or replace function handle_new_user() returns trigger language plpgsql as $$
+begin
+  insert into public.profiles (id, email) values (new.id, new.email);
+  return new;
+end;
+$$;
+
+create trigger on_auth_user_created
+after insert on auth.users
+for each row execute function handle_new_user();
+```
+
+Supported on all backends: the function body is a single `INSERT`, which passes through unmodified on SQLite and runs as ordinary PL/pgSQL on PGlite/Postgres.
+
+## On Postgres backends
+
+PGlite and Postgres run the trigger function bodies exactly as written. `DECLARE`, `IF`/`ELSIF`/`ELSE`, `LOOP`, `RAISE`, `PERFORM`, `SELECT INTO`, `EXECUTE`, and standalone functions all work with no restrictions, since it's real PL/pgSQL executed by real Postgres.
+
+## See also
+
+- [Postgres → SQLite translation](/database/postgres-sqlite-translation): the broader DDL translation mechanism triggers are part of.
+- [Data API divergences](/database/data-api): why `rpc()` (calling standalone functions from the client) isn't available on SQLite.
+- [Backends](/database/backends): switch to `pglite`/`postgres` for full PL/pgSQL support.

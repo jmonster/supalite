@@ -1,0 +1,83 @@
+---
+title: "Framework guides"
+description: "Running Supabase Lite inside Next.js, Cloudflare Workers, and Docker."
+---
+
+Supabase Lite mounts as a request handler (`app.fetch`), so it fits into most frameworks without a custom server.
+
+## Next.js App Router
+
+Run Supabase Lite in the same `next dev` process via App Router catch-all route handlers, no webpack plugin or custom server needed.
+
+Add `@supabase/lite` to `serverExternalPackages` so Next treats it as server-only:
+
+```ts
+// next.config.ts
+import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {
+  serverExternalPackages: ["@supabase/lite"],
+};
+
+export default nextConfig;
+```
+
+Create one server singleton that boots the app in-process (cache the boot promise on `globalThis` so hot-reload doesn't reboot it), then re-export it from three catch-all routes:
+
+```txt
+app/auth/v1/[[...path]]/route.ts
+app/rest/v1/[[...path]]/route.ts
+app/%5Fsystem/[[...path]]/route.ts
+```
+
+```ts
+export const runtime = "nodejs";
+export { DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT } from "@/lib/server";
+```
+
+The `%5Fsystem` folder name is intentional: Next treats folders starting with `_` as private, so the URL-encoded form is what produces a public `/_system` route.
+
+What's different from a standard Supabase + Next.js setup: no Docker, no `supabase start`, and no separate origin, since the client just talks to `window.location.origin`.
+
+## Cloudflare Workers
+
+D1 is reached through `@supabase/lite/workerd`. Two schema-management approaches work:
+
+- **CLI-managed:** a `supabase/` directory with declarative schemas and seed SQL, applied against the D1 binding through the `lite` CLI.
+- **Wrangler-native:** no Supabase Lite CLI involved. Schema lives in `migrations/0_schema.sql` and is applied with `wrangler d1 migrations apply`, wrangler's own tooling.
+
+The Worker itself is identical either way:
+
+```ts
+import { d1 } from "@supabase/lite/workerd";
+import { App } from "@supabase/lite";
+
+export default {
+  async fetch(request, env, _ctx): Promise<Response> {
+    const connection = d1({ binding: env.DB });
+    const app = new App({ connection, studio: { enabled: true } });
+    return app.fetch(request);
+  },
+} satisfies ExportedHandler<Env>;
+```
+
+`wrangler.json(c)` declares the D1 binding as usual:
+
+```json
+"d1_databases": [
+  { "binding": "DB", "database_name": "db", "migrations_dir": "./migrations" }
+]
+```
+
+What's different from a standard Supabase setup: there's no separate database service at all, D1 runs as part of the Worker's own bindings. `experimental` features (Storage, etc.) default to off in workerd since `process.env` isn't available there; toggle them explicitly from a binding with `setExperimental("storage", env.EXPERIMENTAL_STORAGE === "1")`.
+
+## Docker
+
+Package the published `@supabase/lite` npm package into a container with `supabase/` bind-mounted for config, schema, seed, and the SQLite file. Run `lite migration up` (or `lite db diff -f <name>` then `lite migration up`) as a one-off bootstrap step, then serve with `lite start --host --no-admin`: `--host` listens beyond the container loopback and `--no-admin` makes the public-boundary choice explicit.
+
+## Related
+
+- [Embedded / programmatic](/integrations/embedded): the `App` API these guides build on.
+- [Vite plugin](/integrations/vite): the equivalent pattern for Vite frontends instead of Next.js/Workers.
+- [Database backends](/database/backends): D1, PGlite, and Postgres connection setup.
+- Upstream: [Supabase local development](https://supabase.com/docs/guides/local-development), the Docker-based setup these framework integrations replace.

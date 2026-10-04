@@ -1,0 +1,120 @@
+---
+title: "Supported auth flows"
+description: "The 13 GoTrue-compatible Auth endpoints Supabase Lite implements, with supabase-js examples."
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Each method below hits a real backend endpoint at `/auth/v1/*` and behaves like upstream GoTrue for the cases it covers. Session issuance, refresh-token rotation (with reuse detection and revocation), and password hashing are all implemented, not stubbed.
+
+| `supabase-js` method | Endpoint | Notes |
+|---|---|---|
+| [`signUp()`](https://supabase.com/docs/reference/javascript/auth-signup) | `POST /signup` | Email/password, optional metadata, email confirmation |
+| [`signInWithPassword()`](https://supabase.com/docs/guides/auth/passwords) | `POST /token?grant_type=password` | Returns JWT + refresh token |
+| [`signInWithOtp()`](https://supabase.com/docs/guides/auth/auth-email-otp) | `POST /otp` | Magic link / OTP via email |
+| [`verifyOtp()`](https://supabase.com/docs/reference/javascript/auth-verifyotp) | `POST /verify` | signup, magiclink, recovery, email_change, reauthentication. Both the numeric code (`{ email, token }`) and the link's `token_hash` verify against the DB |
+| [`refreshSession()`](https://supabase.com/docs/reference/javascript/auth-refreshsession) | `POST /token?grant_type=refresh_token` | Token rotation, immediate-reuse compatibility, session expiry checks |
+| [`signOut()`](https://supabase.com/docs/reference/javascript/auth-signout) | `POST /logout` | Scopes: `local`, `global`, `others` |
+| [`getUser()`](https://supabase.com/docs/reference/javascript/auth-getuser) | `GET /user` | JWT-authenticated |
+| [`updateUser()`](https://supabase.com/docs/reference/javascript/auth-updateuser) | `PUT /user` | Metadata, password, email change |
+| [`resetPasswordForEmail()`](https://supabase.com/docs/reference/javascript/auth-resetpasswordforemail) | `POST /recover` | Password reset email (client method wraps the `recover` endpoint) |
+| [`resend()`](https://supabase.com/docs/reference/javascript/auth-resend) | `POST /resend` | Resend confirmation / email change |
+| [`reauthenticate()`](https://supabase.com/docs/reference/javascript/auth-reauthenticate) | `GET /reauthenticate` | Request a reauthentication nonce |
+| [`signInWithOAuth()`](https://supabase.com/docs/guides/auth/social-login) | `GET /authorize` | `github` and `google` only; redirects into the provider's consent screen (PKCE or implicit flow) |
+| [`exchangeCodeForSession()`](https://supabase.com/docs/reference/javascript/auth-exchangecodeforsession) | `GET`/`POST /callback`, `POST /token?grant_type=pkce` | Completes the OAuth handshake; automatic account linking when the provider email matches an existing verified user |
+
+## Email/password
+
+```ts
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient("http://127.0.0.1:54321", "<anon-key>");
+
+await supabase.auth.signUp({
+  email: "user@example.com",
+  password: "correct-horse-battery-staple",
+});
+
+const { data, error } = await supabase.auth.signInWithPassword({
+  email: "user@example.com",
+  password: "correct-horse-battery-staple",
+});
+// data.session.access_token is a JWT; RLS policies read auth.uid() from it.
+```
+
+## Email OTP / magic link
+
+```ts
+await supabase.auth.signInWithOtp({ email: "user@example.com" });
+
+// after the user receives the code/link:
+const { data, error } = await supabase.auth.verifyOtp({
+  email: "user@example.com",
+  token: "123456",
+  type: "email",
+});
+```
+
+The 6-digit code is emailed and verified against the database, so it works with any email driver and across isolates (e.g. Cloudflare Workers) — no in-memory state. Emailed links point at `GET /auth/v1/verify`, which verifies the token and redirects to your `redirect_to`. See [Email delivery & templates](/auth/email) to configure the sender, subjects, and HTML.
+
+<Aside>
+Set `[auth.email] enable_confirmations = false` in `config.toml` for local dev so `signUp()` returns an active session immediately instead of waiting on a confirmation email.
+</Aside>
+
+## OAuth / social sign-in
+
+Both the authorization-code (PKCE) and implicit flows are supported. Which one you get depends on the client's `flowType`, which `supabase-js` defaults to `"implicit"` — set `flowType: "pkce"` explicitly to opt into PKCE.
+
+### Implicit (the `supabase-js` default)
+
+```ts
+const supabase = createClient("http://127.0.0.1:54321", "<anon-key>");
+// flowType defaults to "implicit"
+
+await supabase.auth.signInWithOAuth({ provider: "github" });
+// or provider: "google"
+
+// the redirect back to your `redirect_to` URL carries the session in the
+// fragment (`#access_token=...`); supabase-js reads it automatically via
+// `detectSessionInUrl` (also on by default) — do not call
+// `exchangeCodeForSession()` here.
+```
+
+### PKCE, handled automatically
+
+With `flowType: "pkce"` and the default `detectSessionInUrl: true`, the browser client redeems the `?code=...` param itself as soon as the callback page loads. This is the path to use in a browser app — no exchange call of your own:
+
+```ts
+const supabase = createClient("http://127.0.0.1:54321", "<anon-key>", {
+  auth: { flowType: "pkce" },
+});
+
+await supabase.auth.signInWithOAuth({ provider: "github" });
+
+// on the redirect back, supabase-js exchanges the `?code=...` param and stores
+// the session; just wait for it:
+const { data } = await supabase.auth.getSession();
+```
+
+### PKCE, exchanged manually
+
+Only call `exchangeCodeForSession()` yourself when you own the callback handling — a server-side route, or a custom client flow. Turn detection off on that client, otherwise it races your call and one of the two attempts fails against the single-use code:
+
+```ts
+const supabase = createClient("http://127.0.0.1:54321", "<anon-key>", {
+  auth: { flowType: "pkce", detectSessionInUrl: false },
+});
+
+await supabase.auth.signInWithOAuth({ provider: "github" });
+
+// the redirect back to your `redirect_to` URL carries a `?code=...` query param:
+const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+```
+
+<Aside>
+Auth codes are single-use. Never combine `detectSessionInUrl: true` with your own `exchangeCodeForSession()` call — the second redemption fails. And calling `exchangeCodeForSession(code)` against an implicit-flow redirect fails outright: there's no `?code` param, only fragment tokens. Match the exchange call to the client's configured `flowType`.
+</Aside>
+
+Only `github` and `google` are implemented; enabling any other configured provider (including `apple`) returns "provider ... is not yet implemented". If a provider's email matches an existing verified user, the identity is linked to that account automatically — there's no separate `linkIdentity()` step for this case. See [Not supported](/auth/not-supported) for the providers and manual linking gaps.
+
+For everything these flows behave identically to upstream on (JWT claims shape, GoTrue error codes, cookie/session storage on the client), see the [Supabase Auth guide](https://supabase.com/docs/guides/auth), [password auth](https://supabase.com/docs/guides/auth/passwords), [email OTP](https://supabase.com/docs/guides/auth/auth-email-otp), and [social login](https://supabase.com/docs/guides/auth/social-login) docs. For what's missing, see [Not supported](/auth/not-supported).

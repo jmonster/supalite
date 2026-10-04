@@ -1,0 +1,125 @@
+---
+title: "Upgrading to Supabase"
+description: "Migrate a Supabase Lite project to hosted or local Supabase with lite upgrade."
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Supabase Lite is a starting point, not an end state. `lite upgrade` migrates a local Supabase Lite project (schema, `auth.users`/`auth.identities`, application table data, optionally sessions) to a hosted or local Supabase project.
+
+<Aside type="caution">
+Storage and Realtime migration are not implemented yet. If either is enabled, the command warns and continues with schema/auth/data migration only.
+</Aside>
+
+## Quick start
+
+Hosted Supabase is the default target:
+
+```bash
+lite upgrade
+lite upgrade --target hosted
+```
+
+Rehearse first, with no changes to any target:
+
+```bash
+lite upgrade --dry-run
+```
+
+```bash
+lite upgrade --dry-run --json   # machine-readable output
+```
+
+Skip the interactive confirmation:
+
+```bash
+lite upgrade --force
+```
+
+## Prepare migrations
+
+`lite upgrade` replays Postgres migration SQL in recorded history order, then pending files from `supabase/migrations/` in filename order. Recorded rows in `supabase_migrations.schema_migrations` are authoritative for applied versions, so migration-only projects do not need filesystem mirrors of applied SQL. It does not apply declarative files from `supabase/schemas/` directly.
+
+Generate and review a migration before upgrade if your project only uses declarative schemas:
+
+```bash
+lite db diff -f prepare_upgrade
+lite upgrade --dry-run
+```
+
+The bare `sqlite` driver writes native SQL to `supabase/sqlite-migrations/`. Supabase cannot run those files. Move the project to Postgres-compatible migrations before upgrade.
+
+## Targets
+
+<Tabs>
+<TabItem label="Hosted (default)">
+`--target hosted` creates a new hosted Supabase project through the Supabase Management API, waits for it to become healthy, applies schema/auth/data, fetches API keys, and prints the new project details.
+
+```bash
+lite upgrade \
+  --target hosted \
+  --org-id <organization-id-or-slug> \
+  --region <region-key> \
+  --project-name <name> \
+  --supabase-token <personal-access-token>
+```
+
+If `--supabase-token` is omitted, `SUPABASE_ACCESS_TOKEN` is used. Missing required values are prompted for interactively. Only `--mode user` is currently supported; `--mode platform` is reserved for future work.
+
+For a nonstandard Management API endpoint, set `SUPABASE_MANAGEMENT_API_URL` to its full base URL. This overrides only Management API requests; `SUPABASE_ENDPOINT` still determines the project domain. For example, a local Management API can use `SUPABASE_MANAGEMENT_API_URL=http://127.0.0.1:54321` without turning the address into `api.127.0.0.1`.
+</TabItem>
+<TabItem label="Local">
+`--target local` upgrades into a local [Supabase CLI](https://supabase.com/docs/guides/local-development) workdir. By default that's the current directory, so the command rewrites `./supabase/config.toml` in place, stripping the Supabase Lite-only `[db].driver`/`[db].url` keys and repointing at the Supabase CLI stack. **This breaks the Supabase Lite dev server until the config is restored.**
+
+The original config is backed up first to `./supabase/config.toml.bak`:
+
+```bash
+cp supabase/config.toml.bak supabase/config.toml   # or: git checkout supabase/config.toml
+```
+
+Use `--local-dir` to target a separate directory instead and leave the project's own `config.toml` untouched:
+
+```bash
+lite upgrade --target local --local-dir ../my-local-supabase --force --no-migrate-sessions
+```
+
+The local target drives the Supabase CLI via `bunx supabase@2.98.1` (override with `LITE_SUPABASE_CLI`), pins `db.major_version = 15`, enables Studio, and disables services not needed for verification (mailpit, realtime, storage, imgproxy, edge runtime, analytics, supavisor). It leaves the local stack running after a successful upgrade; stop it with `bunx supabase@2.98.1 stop --workdir <dir> --no-backup`.
+</TabItem>
+</Tabs>
+
+## The SQLite-shim audit
+
+Every non-dry-run upgrade first runs readiness checks and an in-memory PGlite rehearsal of the migration, Auth, and application data SQL. The real target is created only after that rehearsal succeeds.
+
+`--dry-run` runs that readiness/rehearsal phase and stops there: no target is created or changed. Part of readiness is a scan of **SQLite-shim-backed fields**: columns whose SQLite representation depends on an application-layer shim (UUID validation, JSON-domain casts, boolean-as-integer, enum `CHECK` constraints, and similar) rather than a native Postgres type. The audit reports affected column counts, sample raw values, and sample row IDs so you can review anything that needs attention before it's translated into real Postgres data.
+
+```bash
+lite upgrade --dry-run          # readiness + rehearsal + shim audit, human-readable
+lite upgrade --dry-run --json   # same, as structured JSON
+```
+
+See [Postgres/SQLite translation](/database/postgres-sqlite-translation) for what each shim represents and why it exists.
+
+The scratch PGlite database creates the packaged Auth schema before it replays project migrations. Application foreign keys such as `references auth.users(id)` therefore run in the same order as they do on Supabase.
+
+## What doesn't carry over cleanly
+
+- **Storage and Realtime**: not migrated. The command warns and continues.
+- **SQLite-only RLS behavior**: SQLite enforces RLS by rewriting the PostgREST query AST at the application layer (see [RLS](/database/rls)); Postgres uses native RLS. Policies that only work because of the SQLite rewrite (or that hit a [known SQLite RLS limitation](/database/rls)) need re-checking against native Postgres semantics after upgrade.
+- **Unsupported SQLite-side features**: range types, quantified comparisons (`eq(any)`, etc.), `rpc()`, multi-schema access, and full regex all behave differently or not at all on SQLite (see [Compatibility](/compatibility)). Code written around those gaps may now have real Postgres equivalents available and worth adopting.
+- **Sessions**: preserved on hosted targets only, via `--migrate-sessions`, by importing `auth.jwt_secret` as a Supabase HS256 signing key. The local target does not support this yet; users re-authenticate after a local upgrade.
+- **Weak JWT secrets**: session migration is blocked non-interactively unless you pass `--allow-weak-jwt-secret`.
+
+## Session migration
+
+```bash
+lite upgrade --migrate-sessions
+```
+
+If `auth.jwt_secret` is missing, hosted session migration fails and the CLI asks you to rerun with `--no-migrate-sessions`. Without session migration, existing tokens become invalid and users must sign in again.
+
+## Related
+
+- [Postgres/SQLite translation](/database/postgres-sqlite-translation): what the shim audit is checking for.
+- [Database backends](/database/backends): running against PGlite/Postgres directly instead of upgrading.
+- Upstream: [Supabase local development](https://supabase.com/docs/guides/local-development) and [Database migrations](https://supabase.com/docs/guides/deployment/database-migrations).

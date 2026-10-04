@@ -1,0 +1,64 @@
+---
+title: "Declarative schemas"
+description: "Writing Postgres DDL in supabase/schemas/*.sql, and how it maps onto SQLite's single-namespace model."
+---
+
+Supabase Lite supports Supabase's declarative schema workflow: write Postgres DDL in `supabase/schemas/*.sql`, and the tooling diffs it against the live database to produce migrations. This page covers what's identical and what changes because the SQLite path has no real schema/namespace concept. For the base declarative-schema workflow, see the [Supabase declarative schemas guide](https://supabase.com/docs/guides/local-development/declarative-database-schemas).
+
+## Writing schemas
+
+Write plain Postgres DDL:
+
+```sql
+-- supabase/schemas/schema.sql
+create table todos (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  title text not null,
+  done boolean default false,
+  created_at timestamptz not null default now()
+);
+
+alter table todos enable row level security;
+
+create policy "select own" on todos for select to authenticated using (auth.uid() = user_id);
+create policy "insert own" on todos for insert to authenticated with check (auth.uid() = user_id);
+```
+
+Point `config.toml` at the file(s):
+
+```toml
+[db.migrations]
+schema_paths = ["./schemas/schema.sql"]
+```
+
+`lite dev` and the Vite plugin watch `schemas/*.sql` and re-apply on change. `lite db diff` compares the live DB against these files and emits a migration for the delta.
+
+## SQLite is single-schema
+
+Postgres supports `CREATE SCHEMA` and cross-schema references (`billing.invoices`, `SET search_path`) with real namespace isolation. SQLite has no schema concept: every object lives in one flat namespace. Supabase Lite uses one fixed mapping for Postgres DDL:
+
+- A relation in `public` uses its bare table name. `public.todos` is stored as `todos`.
+- A relation in another schema uses one quoted dotted identifier. `storage.objects` is stored as `"storage.objects"`.
+
+This mapping is not configurable. It keeps public tables convenient in SQLite tools while preserving non-public schema names for Data API routing, RLS, migrations, and introspection. On the bare `sqlite` driver (raw SQLite DDL, no translation), every relation is also reported as part of `public`.
+
+Because the first dot encodes the logical schema boundary, a physical public table whose name contains a dot cannot be distinguished from a non-public relation. For example, `"billing.invoices"` is interpreted as table `invoices` in schema `billing`. Do not use dots in public table names on SQLite.
+
+This is not real Postgres multi-schema. `auth.users`, `storage.objects`, and other system-schema tables are handled internally by Supabase Lite; you don't need to (and can't) create competing user-defined schemas with the same names. The protected `auth` and `storage` schemas are not exposed through the Data API by default. `storage` can be added explicitly to `api.schemas` when direct metadata endpoints are intentional; `auth` should remain private.
+
+See [Postgres → SQLite translation](/database/postgres-sqlite-translation) for the full list of DDL constructs that don't survive the SQLite path.
+
+The Data API serves every schema listed in `api.schemas` on the `sqlite-postgres` driver. Select one with `Accept-Profile` or `Content-Profile` (`schema()` in supabase-js). An embed across two schemas returns `PGRST205`. See [Data API divergences](/database/data-api).
+
+On PGlite and Postgres, multiple schemas and `schema()` work exactly as they do on hosted Supabase. See [Backends](/database/backends).
+
+## What else changes on SQLite
+
+DDL you write here goes through the same translator described in [Postgres → SQLite translation](/database/postgres-sqlite-translation): types get mapped (`SERIAL` → `INTEGER PRIMARY KEY AUTOINCREMENT`, `JSONB` → `TEXT` with a `json_valid()` check, and so on), column defaults are restricted to a small allow-list, and RLS statements are extracted rather than emitted as SQLite DDL (see [Row Level Security](/database/rls)). Postgres-only constructs with no SQLite equivalent, such as `LATERAL` joins, table inheritance, and range types, throw a descriptive error at translation time rather than silently dropping.
+
+## See also
+
+- [Migrations](/database/migrations): how the declarative diff turns `schemas/*.sql` changes into an applied migration.
+- [Postgres → SQLite translation](/database/postgres-sqlite-translation): the type-mapping and defaults reference.
+- [Backends](/database/backends): schemas and `schema()` work unmodified on PGlite/Postgres.

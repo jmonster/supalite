@@ -1,0 +1,474 @@
+{
+  "name": "@supabase/lite",
+  "version": "0.11.0",
+  "directory": "lite-0.11.0",
+  "tarball": {
+    "url": "https://registry.npmjs.org/@supabase/lite/-/lite-0.11.0.tgz",
+    "integrity": "sha512-F7Z/um+cAedEECNhVffMM04Rl25pmJUiJp3jqW4tKmij2A+Us24r3CyIRjeuhW+fNnTvJQVIshNn6tDb3oB52g==",
+    "sha256": "f8b399ab700ed0ae34a44a38112c86be0fe33cf3e671473799048afa0d496adf"
+  },
+  "files": [
+    {
+      "path": "FEATURES.md",
+      "size": 25571,
+      "mode": "0644",
+      "sha256": "ddcfe87ff3ec705b7549993ace5277551c39826348ffd236d304f88dfee2cd42"
+    },
+    {
+      "path": "LICENSE",
+      "size": 11339,
+      "mode": "0644",
+      "sha256": "89bf602eca94dda30c270194381317f5e5824e6d12c7e087dda1d60e27b71472"
+    },
+    {
+      "path": "LIMITATIONS.md",
+      "size": 16201,
+      "mode": "0644",
+      "sha256": "ca292a9b28182c223baf4bfb6f5b46204fcb8769d59394f87c7ee4047013ee92"
+    },
+    {
+      "path": "PATTERNS.md",
+      "size": 11014,
+      "mode": "0644",
+      "sha256": "f7ca37608671ebf6fdb4201a840cde36963c7c7010b84397bdc916875004bed7"
+    },
+    {
+      "path": "README.md",
+      "size": 25627,
+      "mode": "0644",
+      "sha256": "e3a778b958eea6a13fdf318acc6ebf9e541d8c33d102b0d435e66bc2d6ea8c97"
+    },
+    {
+      "path": "STATUS.md",
+      "size": 87277,
+      "mode": "0644",
+      "sha256": "7aa667bbdd451bf6d2bb4879fbb74ac05798248359a7cbc5ac3ad6ad34d7efeb"
+    },
+    {
+      "path": "UPGRADE.md",
+      "size": 10276,
+      "mode": "0644",
+      "sha256": "13dda0790f37cd0d3fb7fe44010e3ac8e3382e18fb57b197217a7481fd804e4c"
+    },
+    {
+      "path": "dist/Connection-XOZvkhwS.d.ts",
+      "size": 25316,
+      "mode": "0644",
+      "sha256": "543d043f02e7b401d2482ed3f9cae4c0d8676e39305684e5387cab01d187d18c"
+    },
+    {
+      "path": "dist/cli/index.d.ts",
+      "size": 20,
+      "mode": "0644",
+      "sha256": "a59c47872b71f12589942892464e764c0db350c20b72228645615cc36e0a0725"
+    },
+    {
+      "path": "dist/cli/index.js",
+      "size": 376207,
+      "mode": "0755",
+      "sha256": "b4646e383c5de5962afb49adbb4eb20ac6b58bef17c64c5a7c7e80d731178600"
+    },
+    {
+      "path": "dist/cli/lib.d.ts",
+      "size": 7680,
+      "mode": "0644",
+      "sha256": "f7dc6850837c6b66f7edb27ad76738a1ee05288bee25b9690b01e79037e70c66"
+    },
+    {
+      "path": "dist/cli/lib.js",
+      "size": 143589,
+      "mode": "0644",
+      "sha256": "79341ef487490d96c8f988057c03c12071e0577838bcec204ac69c9c3b302f9c"
+    },
+    {
+      "path": "dist/db/browser/index.d.ts",
+      "size": 930,
+      "mode": "0644",
+      "sha256": "69f9ed6b1d676983f79921868061f8d38530982722f833901c5da941d3a597e2"
+    },
+    {
+      "path": "dist/db/browser/index.js",
+      "size": 2209,
+      "mode": "0644",
+      "sha256": "8fa4041cd1ae004087a3b228c58a68605c71112d7e5872938ceefe0fb7363828"
+    },
+    {
+      "path": "dist/db/bun/index.d.ts",
+      "size": 780,
+      "mode": "0644",
+      "sha256": "41d172045d65491c815ad4a51220afa3d72e5adad6b93bf32a9e35586fe848ce"
+    },
+    {
+      "path": "dist/db/bun/index.js",
+      "size": 2376,
+      "mode": "0644",
+      "sha256": "e732faece2e5fc02c43998f6894c85b5554c7f51568d69b83fa692d944302077"
+    },
+    {
+      "path": "dist/db/fallback.d.ts",
+      "size": 282,
+      "mode": "0644",
+      "sha256": "4631b28f6ae3887cb6a7db1ab0af1db21999833e5e4dea48be819410498d98fa"
+    },
+    {
+      "path": "dist/db/fallback.js",
+      "size": 397,
+      "mode": "0644",
+      "sha256": "e003a8a87f08697abda39ca576286a72429ce4aa84c7e70dc1760c813a56c682"
+    },
+    {
+      "path": "dist/db/libsql/index.d.ts",
+      "size": 1382,
+      "mode": "0644",
+      "sha256": "73a1545831f3f1b457ce71e647e0877fe88307cd2b2aed65eb9837a9a2b9d6ce"
+    },
+    {
+      "path": "dist/db/libsql/index.js",
+      "size": 2366,
+      "mode": "0644",
+      "sha256": "4b3c4ee5a69ae3cf00fa6cea69296fb69940b3622b24087f600e7c78c2d34513"
+    },
+    {
+      "path": "dist/db/node/index.d.ts",
+      "size": 783,
+      "mode": "0644",
+      "sha256": "0f7f2279e3d7a7733844d5b9375b81dd4ef6bf21bfbc1173b154f34d806539b1"
+    },
+    {
+      "path": "dist/db/node/index.js",
+      "size": 2273,
+      "mode": "0644",
+      "sha256": "e4fc00921852421ee83b7abc6456b4e96d3bc9221099789169d23696f2c6d269"
+    },
+    {
+      "path": "dist/db/postgres/BasePostgresConnection-xaPv2E6u.d.ts",
+      "size": 2220,
+      "mode": "0644",
+      "sha256": "949e4723230c4735f21090a6c2b513ae48e4312a1adbcbcb555646e71fe308e3"
+    },
+    {
+      "path": "dist/db/postgres/PostgresConnection.d.ts",
+      "size": 1181,
+      "mode": "0644",
+      "sha256": "bac587a3056de4af21af6668837854dab1be32dd0fb9802d9aa1e36525a67f0c"
+    },
+    {
+      "path": "dist/db/postgres/PostgresConnection.js",
+      "size": 32976,
+      "mode": "0644",
+      "sha256": "0867dcf3011528ec39ac4404571c88f8794a0089356b2f869f29695dfdbce1a4"
+    },
+    {
+      "path": "dist/db/postgres/pglite/PgliteConnection.d.ts",
+      "size": 1577,
+      "mode": "0644",
+      "sha256": "14ac4188470d3871b439e5925eeae86c3a29b051ecc2214aa2f99a400fab7197"
+    },
+    {
+      "path": "dist/db/postgres/pglite/PgliteConnection.js",
+      "size": 41994,
+      "mode": "0644",
+      "sha256": "a70cc174d0aaf7bf4a063584b621dd472b85ead6bc727398afc99e756cd68ec9"
+    },
+    {
+      "path": "dist/db/workerd/index.d.ts",
+      "size": 2301,
+      "mode": "0644",
+      "sha256": "80435b455ddc5898cc5d372f8e399801abbc2db9ea39a6af8ce1f55a692fb25e"
+    },
+    {
+      "path": "dist/db/workerd/index.js",
+      "size": 4044,
+      "mode": "0644",
+      "sha256": "eaef7ca31b6217a30e0db5c245fa525f358efdd4304d42a2857e9a8223cd9e53"
+    },
+    {
+      "path": "dist/index-DKO3OQpz.d.ts",
+      "size": 33106,
+      "mode": "0644",
+      "sha256": "cccd003c6694b84929b2f12a1507411c264dd6a3474b5e3c36c0684d75aa90f1"
+    },
+    {
+      "path": "dist/index.d.ts",
+      "size": 111488,
+      "mode": "0644",
+      "sha256": "1987246fbcb7f13f0ff2e021c427f50c9b716ed3c78f994d2b40183a86bc5c46"
+    },
+    {
+      "path": "dist/index.js",
+      "size": 551770,
+      "mode": "0644",
+      "sha256": "f5cf75c6bcb10cec0c175cd4a8237b831368f7dbfc77e12652b965dde6a5685d"
+    },
+    {
+      "path": "dist/static/.vite/manifest.json",
+      "size": 2096,
+      "mode": "0644",
+      "sha256": "c81dabfc67faecaa30b848e2eab9a8a138c5986e6c7caafa49a92260a6cbb30b"
+    },
+    {
+      "path": "dist/static/assets/InterVariable-Dx4kXJAl.woff2",
+      "size": 48256,
+      "mode": "0644",
+      "sha256": "3100e775e8616cd2611beecfa23a4263d7037586789b43f035236a2e6fbd4c62"
+    },
+    {
+      "path": "dist/static/assets/InterVariable-Italic-DpCbqKDY.woff2",
+      "size": 51832,
+      "mode": "0644",
+      "sha256": "7291b5970da2237441273c03b424a504b70b18f09791473fab99687dcc314720"
+    },
+    {
+      "path": "dist/static/assets/SourceCodePro-Variable-BP8Zz55n.woff2",
+      "size": 22044,
+      "mode": "0644",
+      "sha256": "8b774aaa5137a38ef40f4ac9d36db9a5eee152b2f66589dfdc82ff007fc87135"
+    },
+    {
+      "path": "dist/static/assets/SourceCodePro-Variable-Italic-eALmlzX7.woff2",
+      "size": 22448,
+      "mode": "0644",
+      "sha256": "97f01332aeda642a2f298030203dd4dd72802c0288ab2705d33daf691278e563"
+    },
+    {
+      "path": "dist/static/assets/main-BY4iigay.css",
+      "size": 262437,
+      "mode": "0644",
+      "sha256": "0a0e2f594237644ba133ee975cdcebe7bc9ebc48802e192e544505bc39037c31"
+    },
+    {
+      "path": "dist/static/assets/main-BgJs27xp.js",
+      "size": 813766,
+      "mode": "0644",
+      "sha256": "5882be778471eba66ac59074c3e88883a73d7c0f9af4e766a8a0bde201beaec4"
+    },
+    {
+      "path": "dist/static/assets/manrope-latin-ext-wght-normal-Ch3YOpNY.woff2",
+      "size": 15120,
+      "mode": "0644",
+      "sha256": "3911b66d9f2e005a4b989223405d0e5032619c668597ba467cc76a23c8fffcfb"
+    },
+    {
+      "path": "dist/static/assets/manrope-latin-wght-normal-DHIcAJRg.woff2",
+      "size": 24836,
+      "mode": "0644",
+      "sha256": "a30ddcd349703aff7464c34bef3fffdff405ee50c113440d7c8693c02d210972"
+    },
+    {
+      "path": "dist/static/favicon.ico",
+      "size": 1150,
+      "mode": "0644",
+      "sha256": "47267628af20b00fe9d76b98ed249f4b0a59c0a3555bf9adf77432060d933346"
+    },
+    {
+      "path": "dist/studio/index.css",
+      "size": 509236,
+      "mode": "0644",
+      "sha256": "c2218af0e2fa3d50a0fcb3ee22325ca6f0b60160abce8515f1b29a1fe41d026c"
+    },
+    {
+      "path": "dist/studio/index.d.ts",
+      "size": 6259,
+      "mode": "0644",
+      "sha256": "80504e125395ecd802e1e2a2758bde14e65e5b01911f6dcc0d82acd4d00ab583"
+    },
+    {
+      "path": "dist/studio/index.js",
+      "size": 688836,
+      "mode": "0644",
+      "sha256": "b78d1874777f101061083b6cd7f225ebaef2783aaf2f5ca7edbe0d01282e6592"
+    },
+    {
+      "path": "dist/vite/index.d.ts",
+      "size": 125136,
+      "mode": "0644",
+      "sha256": "4d4b2bb640aa6c4f616381dacd5f7a0cbf8a44f1269ace2a49d3aa0ebbe7f34b"
+    },
+    {
+      "path": "dist/vite/index.js",
+      "size": 6185,
+      "mode": "0644",
+      "sha256": "8f8d89fc2fe40e4c6c0ffbc7fc94b2d6b3cfb1ebea22c525bf8063964ee28353"
+    },
+    {
+      "path": "docs/auth/email.mdx",
+      "size": 12989,
+      "mode": "0644",
+      "sha256": "00b78dec8442ad8f44cb6b9bd57686872afd83f5e18c0344722fa407a4440e4b"
+    },
+    {
+      "path": "docs/auth/not-supported.mdx",
+      "size": 5475,
+      "mode": "0644",
+      "sha256": "60a3ae9a5183fb714f7a6744813fb20b16825bb4c6c53086409766fab1bbc39c"
+    },
+    {
+      "path": "docs/auth/overview.mdx",
+      "size": 5816,
+      "mode": "0644",
+      "sha256": "d0701c6afae3eeefd49711223762fbd9f624dbef9dc9ac9e28dc57843360e632"
+    },
+    {
+      "path": "docs/auth/supported-flows.mdx",
+      "size": 7311,
+      "mode": "0644",
+      "sha256": "f3ebc9c42556e4703a6ab701c6096a916312b6d0c8ac7b06e3973d6a2d429ca2"
+    },
+    {
+      "path": "docs/cli/overview.mdx",
+      "size": 8527,
+      "mode": "0644",
+      "sha256": "4dd638d49efdfcec40444b49e3244cd43a01ecae8976f1c07e93da2372914ef4"
+    },
+    {
+      "path": "docs/cli/telemetry.mdx",
+      "size": 1301,
+      "mode": "0644",
+      "sha256": "cc6233654bbea65a2aa04ab665d020d75b0fa6140e39c0e9b9ffde2ad8a92460"
+    },
+    {
+      "path": "docs/compatibility.mdx",
+      "size": 7857,
+      "mode": "0644",
+      "sha256": "65887101fe3f9675252e79483494d98b73e88843eadd97a8c99ff3dce6ddc584"
+    },
+    {
+      "path": "docs/database/backends.mdx",
+      "size": 6648,
+      "mode": "0644",
+      "sha256": "c831d8781adb25c3f51139e8b136c9d888a7ba6fc1988de8b59bec91f45d0fdb"
+    },
+    {
+      "path": "docs/database/data-api.mdx",
+      "size": 6464,
+      "mode": "0644",
+      "sha256": "d3ae34fe01466bbbeb95adc014bdbcef95d46b58a8bd1abac301b13cbf046e00"
+    },
+    {
+      "path": "docs/database/functions-triggers.mdx",
+      "size": 4865,
+      "mode": "0644",
+      "sha256": "79adaba1b8feff5f7e8c7af5690e0757f87b5e05716a8433c1bea3d1c4eea91c"
+    },
+    {
+      "path": "docs/database/migrations.mdx",
+      "size": 7813,
+      "mode": "0644",
+      "sha256": "59bb1596dc7d3ac1309f66d93c6df310da78b1a4868d7e1b552f44b76584d836"
+    },
+    {
+      "path": "docs/database/overview.mdx",
+      "size": 4750,
+      "mode": "0644",
+      "sha256": "162446161cc903f19d0d2dd0a85efa2d03248e1a643ec589ee06fce508acbee7"
+    },
+    {
+      "path": "docs/database/postgres-sqlite-translation.mdx",
+      "size": 11951,
+      "mode": "0644",
+      "sha256": "97b1d789b9f07c02f19f9cf3b479fd25e8e524d8895adf13b4a80a488827a814"
+    },
+    {
+      "path": "docs/database/rls.mdx",
+      "size": 11166,
+      "mode": "0644",
+      "sha256": "0cf8dd037bb39b7cc2fb1a74288004acb65330c3775d2c0ced6a3eb15c8f88d3"
+    },
+    {
+      "path": "docs/database/schemas.mdx",
+      "size": 4579,
+      "mode": "0644",
+      "sha256": "c9aba6cfd466ff1e00c85b401b704d8b332c156651e4b1720d9fe74dfcaed3a4"
+    },
+    {
+      "path": "docs/index.mdx",
+      "size": 3751,
+      "mode": "0644",
+      "sha256": "c1a925782fb8b097d00e1ce98f6c4165c6c6a9c2aa784647b9c1d2001784ac12"
+    },
+    {
+      "path": "docs/integrations/embedded.mdx",
+      "size": 5247,
+      "mode": "0644",
+      "sha256": "e666a8253a1f4673da3f7b0e93d44db59f42a5a6997edc26382b072b765df513"
+    },
+    {
+      "path": "docs/integrations/frameworks.mdx",
+      "size": 3617,
+      "mode": "0644",
+      "sha256": "3ec9881293102ff04c6f13f511049c2f2cde31962c5318b1115d5395b81f63d4"
+    },
+    {
+      "path": "docs/integrations/vite.mdx",
+      "size": 5483,
+      "mode": "0644",
+      "sha256": "a1c7d2f1b12d78316bc4859756a22c861733bae5c07d712d7a456afc042cd89b"
+    },
+    {
+      "path": "docs/llms.txt",
+      "size": 4345,
+      "mode": "0644",
+      "sha256": "4917836e089237d1c3f07d74f066bf40cd5a8d1ebccd4ebb267379e443eca299"
+    },
+    {
+      "path": "docs/other/edge-functions.mdx",
+      "size": 1886,
+      "mode": "0644",
+      "sha256": "1b78757d9d852bcadcee004dbe586a730c016e069f11fc58d53698759f934bf2"
+    },
+    {
+      "path": "docs/other/realtime.mdx",
+      "size": 1591,
+      "mode": "0644",
+      "sha256": "f238362a4b82de19ef31ac3ccba43fb13f1a8f3321d6148b18098226b0acaed4"
+    },
+    {
+      "path": "docs/quickstart.mdx",
+      "size": 5269,
+      "mode": "0644",
+      "sha256": "adeca83cb816e0b0c99cd718db040a9e2be4ff3bd3df500d2f830eb07642746c"
+    },
+    {
+      "path": "docs/running.mdx",
+      "size": 10014,
+      "mode": "0644",
+      "sha256": "dfc2570bb7e82367ad92fe5516853b91295ca8d4a360ad440b5db3f23a66173d"
+    },
+    {
+      "path": "docs/storage/adapters.mdx",
+      "size": 4276,
+      "mode": "0644",
+      "sha256": "ec36ae1ccc9964cdc8fe252c145a165f188c834bf63b0abe2c29b26d1bd110ca"
+    },
+    {
+      "path": "docs/storage/limitations.mdx",
+      "size": 1515,
+      "mode": "0644",
+      "sha256": "32a2df030644c628901318f787be53974cf26366e2bb506dc698a183d2acf543"
+    },
+    {
+      "path": "docs/storage/overview.mdx",
+      "size": 7312,
+      "mode": "0644",
+      "sha256": "53c6567ba61736377db32ba0cd039cfb828e8f84d6639bcc5ac3c450963ec600"
+    },
+    {
+      "path": "docs/upgrade.mdx",
+      "size": 7046,
+      "mode": "0644",
+      "sha256": "7def4007994901678c874f0a78b86d467e3a9e708311d51f56de82f42ef10eec"
+    },
+    {
+      "path": "package.json",
+      "size": 8792,
+      "mode": "0644",
+      "sha256": "b25c4558e6beed7ceecd14ce5d1ae5e6c1fb7c26ecfaf3da9f4b1cf8ae43800f"
+    },
+    {
+      "path": "skills/supalite/SKILL.md",
+      "size": 3430,
+      "mode": "0644",
+      "sha256": "cac7a8615146c7002bdd96c94701eeb29e038facb6bc7decd63b0c65cd6fa216"
+    }
+  ]
+}

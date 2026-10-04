@@ -1,0 +1,21 @@
+---
+title: "Storage limitations"
+description: "What's not yet implemented in Supabase Lite Storage: TUS uploads, webhooks, bucket-list query params, and the S3-compatible server protocol."
+---
+
+Storage is [experimental](/storage/overview) and behind the `EXPERIMENTAL_STORAGE` flag. Everything below is a gap on top of that: even with the flag on and an adapter wired up, these features don't exist yet.
+
+## Not yet implemented
+
+| Feature | Notes |
+|---|---|
+| Bucket list query params | `GET /bucket` doesn't yet accept `?search=`, `?limit=`, `?offset=`. |
+| S3-compatible protocol (server side) | No `PUT`/`GET`/`DELETE` under `/storage/v1/s3/*`. Supabase Lite can act as an S3 *client* via the [S3 storage adapter](/storage/adapters), but doesn't expose an S3-compatible server. |
+| TUS resumable uploads | No `POST`/`PATCH`/`HEAD` on `/upload/resumable`. |
+| Webhooks | No `ObjectCreated`/`ObjectRemoved` event delivery. |
+
+## Workaround
+
+For any of the above, run the storage-dependent parts of your app against hosted Supabase and keep the rest (Data API, Auth) on Supabase Lite. Mixed backends are a normal transitional setup, not something you need to migrate wholesale for.
+
+For Storage access-control policies, see [Supabase Storage access control](https://supabase.com/docs/guides/storage/security/access-control); Supabase Lite supports that model across SQLite, PGlite, and PostgreSQL. For what is implemented today, see [Storage overview](/storage/overview) and [Storage adapters](/storage/adapters).

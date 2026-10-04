@@ -1,0 +1,22 @@
+---
+title: "Realtime"
+description: "Supabase Realtime (channels, presence, broadcast, Postgres Changes) is not implemented in @supabase/lite yet."
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+<Aside type="caution">
+Realtime is not implemented. There is no WebSocket server, no channels, and no Postgres Changes stream in Supabase Lite yet.
+</Aside>
+
+A config schema for Realtime exists in `app/src/config/realtime.ts`, but it isn't wired to any runtime behavior. Setting `[realtime]` keys in `config.toml` has no effect today. Calling `supabase.channel(...)`, `.on("postgres_changes", ...)`, presence, or broadcast against a Supabase Lite instance will not connect to anything on the server side.
+
+## Workaround
+
+Run the realtime-dependent parts of your app against hosted Supabase. Supabase Lite can still serve the Data API and Auth for the rest of the app; there's no requirement to run a single backend for every product.
+
+## What it would look like
+
+When implemented, Realtime would need to cover the same three primitives upstream does: Postgres Changes (streaming row-level INSERT/UPDATE/DELETE events), Broadcast (ephemeral pub/sub over a channel), and Presence (shared client state per channel). None of this exists yet, so check `STATUS.md` in the installed package for current status before building around an assumed timeline.
+
+For the concepts and client API this would eventually support unchanged, see the [Supabase Realtime docs](https://supabase.com/docs/guides/realtime). See [Compatibility](/compatibility) for how Realtime tracks against everything else.

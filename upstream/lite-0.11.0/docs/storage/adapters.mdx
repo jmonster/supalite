@@ -1,0 +1,75 @@
+---
+title: "Storage adapters"
+description: "Pluggable storage backends (filesystem, S3-compatible) and transformation adapters (Noop, Sharp, Cloudflare) for Supabase Lite Storage."
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Supabase Lite's Storage API separates *where bytes live* (storage adapters) from *how images get resized* (transformation adapters). Both are supabase-js-invisible: the same `supabase.storage.from(...).upload()` call works no matter which adapter is wired up server-side. This adapter split is a Supabase Lite-specific implementation detail; there's no equivalent concept to configure in hosted Supabase.
+
+<Aside type="note">
+Storage is experimental. See [Storage overview](/storage/overview) for the `EXPERIMENTAL_STORAGE` flag and the config required before any adapter matters.
+</Aside>
+
+## Storage adapters
+
+Where object bytes are physically stored.
+
+| Adapter | Status | Notes |
+|---|---|---|
+| Filesystem | Supported | Local disk. Default for `lite dev` / `lite start` under `.temp/storage`. |
+| S3 / S3-compatible | Supported | MinIO, AWS S3, Cloudflare R2, via [`aws4fetch`](https://github.com/lquixada/aws4fetch), not the AWS SDK. |
+| Cloudflare R2 | Supported | Uses the S3 adapter with R2's S3-compatible endpoint. |
+
+### Filesystem
+
+Set programmatically on the `App` instance:
+
+```ts
+import { FilesystemStorageAdapter } from "@supabase/lite/storage/adapters/FilesystemStorageAdapter";
+
+app._storageAdapter = new FilesystemStorageAdapter({
+  basePath: "./supabase/.temp/storage",
+});
+```
+
+This is what the `lite` CLI wires up automatically when `EXPERIMENTAL_STORAGE=1` and `storage.enabled` are set: object bytes land under `<config_dir>/.temp/storage/<bucket>/<key>`.
+
+### S3-compatible
+
+```ts
+import { S3StorageAdapter } from "@supabase/lite/storage/adapters/S3StorageAdapter";
+
+app._storageAdapter = new S3StorageAdapter({
+  accessKeyId: process.env.S3_ACCESS_KEY_ID!,
+  secretAccessKey: process.env.S3_SECRET_ACCESS_KEY!,
+  endpoint: "https://<account>.r2.cloudflarestorage.com",
+  region: "auto",
+  bucket: "my-bucket",       // optional: scope all operations to one S3 bucket
+  forcePathStyle: true,       // required for MinIO and some S3-compatible providers
+});
+```
+
+`endpoint` and `region` point at whichever S3-compatible provider you use (AWS S3, MinIO, Cloudflare R2). `forcePathStyle` switches between virtual-hosted-style and path-style URLs; enable it for MinIO and most self-hosted S3-compatible servers.
+
+For the S3 API surface this adapter targets on the wire, see [Supabase Storage S3 compatibility](https://supabase.com/docs/guides/storage/s3/compatibility). Note that's about Supabase's own S3-compatible *server* endpoint, which Supabase Lite does not yet implement server-side (see [Storage limitations](/storage/limitations)); this adapter is Supabase Lite acting as an S3 *client* to store bytes remotely.
+
+## Transformation adapters
+
+How (and whether) images get resized/reformatted on read.
+
+| Adapter | Status | Notes |
+|---|---|---|
+| Noop | Supported | Passthrough: no transforms, returns the original bytes. Default. |
+| Sharp | Supported | Resize + format conversion via [`sharp`](https://sharp.pixelplumbing.com/), in-process. Requires `sharp` as an optional dependency in your project. |
+| Cloudflare | Supported | Delegates to [Cloudflare Image Resizing](https://developers.cloudflare.com/images/transform-images/transform-via-workers/) via `fetch` with `cf.image` options; no image-processing library, works in Workers. |
+
+```ts
+import { SharpTransformationAdapter } from "@supabase/lite/storage/transformations/SharpTransformationAdapter";
+
+app._transformationAdapter = new SharpTransformationAdapter();
+```
+
+Pick Sharp for Node/Bun deployments where you want image transforms without an external image proxy, and Cloudflare's adapter when running on Workers, where Cloudflare's edge already handles resizing and a native image library isn't available. Leave the default Noop adapter if you don't need `?width=`/`?height=` transforms at all.
+
+For the transform options themselves (`width`, `height`, `resize`, `format`, `quality`) and how they're requested from the client, see [Supabase image transformations](https://supabase.com/docs/guides/storage/serving/image-transformations).
