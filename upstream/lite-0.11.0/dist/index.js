@@ -13617,7 +13617,7 @@ function rm(t, e) {
 function Z_(t, e, n) {
   let r = n.insertInto(t.from);
   if (t.values) {
-    let i = ic(t.values, e, t.schema, t.from, { applyDefaults: true });
+    let i = insertValues(t, e);
     r = r.values(i);
   }
   let s = t.from ? { ...e, currentTable: t.from } : e;
@@ -13669,8 +13669,7 @@ function sm(t, e, n, r) {
   } else return t.where(sql.ref(a), "in", o);
 }
 function nE(t, e, n) {
-  let r = t.values,
-    s = ic(r, e, t.schema, t.from, { applyDefaults: true }),
+  let s = insertValues(t, e),
     i = n.insertInto(t.from).values(s);
   t.onConflict &&
     (i = i.onConflict((a) => {
@@ -13679,8 +13678,10 @@ function nE(t, e, n) {
           ? a.column(t.onConflict[0])
           : a.columns(t.onConflict);
       if (t.ignoreDuplicates) return l.doNothing();
-      let c = Array.isArray(s) ? s[0] : s,
-        u = Object.keys(c).filter((f) => !t.onConflict.includes(f));
+      let c = Array.isArray(s) ? s : [s],
+        u = [...new Set(c.flatMap(Object.keys))].filter(
+          (f) => !t.onConflict.includes(f),
+        );
       return u.length === 0
         ? l.doUpdateSet({
             [t.onConflict[0]]: sql.ref(`excluded.${t.onConflict[0]}`),
@@ -13693,6 +13694,36 @@ function nE(t, e, n) {
     }));
   let o = t.from ? { ...e, currentTable: t.from } : e;
   return ((i = fs(i, t.select, o)), i);
+}
+function insertValues(ast, context) {
+  let columns = ast.$meta?.columns;
+  let values = ic(ast.values, context, ast.schema, ast.from, {
+    // Explicit request columns use database defaults, not JS-side defaults.
+    applyDefaults: !columns,
+  });
+  if (!columns) return values;
+  let defaults = new Map();
+  if (ast.$meta.missing === "default" && context.dialect === "sqlite") {
+    let schema = ast.schema ?? context.introspection?.default_schema ?? "public";
+    for (let column of context.introspection?.columns ?? [])
+      if (column.table === ast.from && (column.schema || "public") === schema)
+        defaults.set(column.name, column.default_value);
+  }
+  let normalize = (value) => {
+    let row = { ...value };
+    for (let column of columns) {
+      if (Object.hasOwn(row, column)) continue;
+      row[column] = ast.$meta.missing !== "default"
+        ? null
+        : context.dialect === "postgres"
+          ? sql`DEFAULT`
+          // SQLite has no DEFAULT expression inside VALUES. Its introspected
+          // column default is already translated SQL, evaluated per row by SQLite.
+          : defaults.get(column) == null ? null : sql.raw(defaults.get(column));
+    }
+    return row;
+  };
+  return Array.isArray(values) ? values.map(normalize) : normalize(values);
 }
 function rE(t, e, n) {
   let r = n.introspection?.functions;
@@ -16062,7 +16093,7 @@ function rr({
     (i = Lm(i, e, r, jm(e))),
     (i = qm(i, e.select, n.dialect)),
     s?.meta?.return === "representation" &&
-      (e.type === "insert" || e.type === "upsert" || e.type === "update") &&
+      e.type === "update" &&
       (i = nh(i, s.meta?.columns, s.mutationPlan.bodyKeySets)),
     i
   );
