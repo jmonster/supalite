@@ -16409,6 +16409,33 @@ async function Th(t, e, n, r, s, i) {
     m = new Map(p.map((g) => [h(g), g]));
   return t.map((g) => m.get(h(g)) ?? g);
 }
+async function atomicSingularMutation(t) {
+  const execute = async (db) => {
+    const response = await Rh({ ...t, db });
+    if (response.status === 406) throw new $o(response);
+    return response;
+  };
+  try {
+    if (t.db.isTransaction || t.connection.harnessHoldingOuterTx) {
+      // Keep any caller-owned transaction and its unrelated writes intact.
+      const savepoint = sql.id(`supalite_singular_${gN().replaceAll("-", "")}`);
+      await sql`SAVEPOINT ${savepoint}`.execute(t.db);
+      try {
+        const response = await execute(t.db);
+        await sql`RELEASE SAVEPOINT ${savepoint}`.execute(t.db);
+        return response;
+      } catch (error) {
+        await sql`ROLLBACK TO SAVEPOINT ${savepoint}`.execute(t.db);
+        await sql`RELEASE SAVEPOINT ${savepoint}`.execute(t.db);
+        throw error;
+      }
+    }
+    return await t.connection.runInTransaction(execute);
+  } catch (error) {
+    if (error instanceof $o) return error.result;
+    throw error;
+  }
+}
 async function Rh(t) {
   let {
       ast: e,
@@ -17057,7 +17084,9 @@ var bT = {
             if (an) return an;
             let Ln = await _h(C);
             if (Ln) return Ln;
-            let wi = await Rh(C);
+            let wi = await (A && E?.cardinality === "one"
+              ? atomicSingularMutation(C)
+              : Rh(C));
             return a && u === "postgres" ? await dh(O, wi) : wi;
           },
           {
