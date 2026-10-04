@@ -1,6 +1,12 @@
 #!/usr/bin/env node
 import { normalizeSupabaseAuthUser } from "./upgrade-auth-users.js";
+import {
+  inspectStorage, assertStorageUnchanged, storageInserts, storageShape,
+  assertStorageShape, assertStorageEmpty, storageState,
+  requireFreshStorageDirectory, waitForStorage, transferStorage,
+} from "./upgrade-storage.js";
 import as, { statSync, readFileSync } from "node:fs";
+import { Readable } from "node:stream";
 import * as Fe from "node:path";
 import Fe__default, { join } from "node:path";
 import { parse } from "dotenv";
@@ -19,6 +25,7 @@ import {
   isEqual,
   ensureVar,
   App,
+  getStorageSchemaSql,
   cloud,
 } from "@supabase/lite";
 import { sql } from "kysely";
@@ -4411,7 +4418,9 @@ var Gs,
               metadata: this.buildMetadata(o, a, n),
             };
         }
-        let l,
+        let l = Readable.toWeb((await he.open(i, "r")).createReadStream(), {
+            strategy: { highWaterMark: 65536, size: (chunk) => chunk.byteLength },
+          }),
           c,
           p = o.size,
           u = 200;
@@ -4422,10 +4431,9 @@ var Gs,
               m = f[2] ? Number.parseInt(f[2], 10) : o.size - 1;
             ((p = m - h + 1),
               (c = `bytes ${h}-${m}/${o.size}`),
-              (u = 206),
-              (l = (await he.open(i, "r")).readableWebStream()));
-          } else l = (await he.open(i, "r")).readableWebStream();
-        } else l = (await he.open(i, "r")).readableWebStream();
+              (u = 206));
+          }
+        }
         return {
           httpStatusCode: u,
           metadata: {
@@ -17736,7 +17744,7 @@ async function to(e, t) {
     return 0;
   }
 }
-async function Ch(e, t) {
+async function Ch(e, t, options = {}) {
   let n = [],
     r = [],
     s = false;
@@ -17760,6 +17768,14 @@ async function Ch(e, t) {
     identities: 0,
     jwt_secret_set: !!e.config.auth?.jwt_secret,
   };
+  let storage = null;
+  if (s) {
+    try {
+      storage = await inspectStorage(e, { ...options, adapterClass: Gs });
+    } catch (error) {
+      n.push(String(error));
+    }
+  }
   return (
     s &&
       ((o.users = await to(e, "users")),
@@ -17770,8 +17786,6 @@ async function Ch(e, t) {
       r.push(
         "auth.jwt_secret is not configured \u2014 tokens will not survive upgrade",
       ),
-    e.config.storage?.enabled &&
-      r.push("Storage is enabled but migration is not yet supported"),
     e.config.realtime?.enabled &&
       r.push("Realtime config migration is not yet supported"),
     {
@@ -17783,6 +17797,7 @@ async function Ch(e, t) {
       schemaBytes: t.sql.length,
       tables: i,
       auth: o,
+      storage,
     }
   );
 }
@@ -18325,7 +18340,10 @@ var kh = b(() => {
 function io(e) {
   let t = so.get(e);
   if (t) return t;
-  let n = vh(e.sql, no()).then(async (r) => (await ah(r)).schema);
+  let n = vh(
+    e.sql,
+    no() + (/\bstorage\b/i.test(e.sql) ? getStorageSchemaSql() : ""),
+  ).then(async (r) => (await ah(r)).schema);
   return (
     so.set(e, n),
     n.catch(() => {
@@ -18578,7 +18596,7 @@ var PT,
         "serial2",
       ])));
   });
-async function Ih(e, t) {
+async function Ih(e, t, { storage } = {}) {
   let { PGlite: n } = await We(
       "@supabase/lite/pglite",
       "pglite",
@@ -18620,7 +18638,7 @@ async function Ih(e, t) {
           }
         );
       }
-    let p = zr(no());
+    let p = zr(no() + (storage || /\bstorage\b/i.test(t.sql) ? getStorageSchemaSql() : ""));
     i = p.length;
     for (let m = 0; m < p.length; m++)
       try {
@@ -18643,6 +18661,8 @@ async function Ih(e, t) {
           }
         );
       }
+    const storageBefore = storage
+      ? await storageShape((sql) => r.query(sql)) : null;
     o = t.statements.length;
     for (let m of t.statements)
       try {
@@ -18665,6 +18685,7 @@ async function Ih(e, t) {
           }
         );
       }
+    if (storage) await assertStorageShape((sql) => r.query(sql), storageBefore);
     let u = await ro(e, { target: "local" }),
       f = ["users", "sessions", "identities", "refresh_tokens"];
     for (let m of f) {
@@ -18683,6 +18704,12 @@ async function Ih(e, t) {
         }
       }
     }
+    if (storage) {
+      await assertStorageShape((sql) => r.query(sql), storageBefore);
+      for (const sql of storageInserts(storage)) await r.exec(sql);
+    }
+    const storageBeforeData = storage
+      ? await storageState((sql) => r.query(sql)) : null;
     let h = await co(e, t);
     for (let m of h) {
       for (let d = 0; d < m.inserts.length; d++) {
@@ -18710,6 +18737,12 @@ async function Ih(e, t) {
           });
         }
     }
+    if (storage && (await storageState((sql) => r.query(sql))) !== storageBeforeData) {
+      throw new Error("Application-row import changed Storage records; this trigger/dependency is unsupported");
+    }
+  } catch (error) {
+    if (!storage) throw error;
+    s.push({ phase: "storage", label: "Storage rehearsal", statement: "", error: String(error) });
   } finally {
     await r.close().catch(() => {});
   }
@@ -18751,6 +18784,7 @@ function jh(e) {
       console.log(`    ${r}${t.table}: ${O.default.cyan(t.rowCount)} rows${n}`);
     }
   }
+  if (e.storage) console.log(`  storage: ${e.storage.buckets.length} buckets, ${e.storage.objects.length} objects, ${e.storage.objects.reduce((bytes, object) => bytes + object.size, 0)} bytes verified at source`);
   if (e.errors.length > 0) {
     console.log(O.default.red("Errors:"));
     for (let t of e.errors) console.log(`  ${O.default.red("\u2717")} ${t}`);
@@ -19112,6 +19146,21 @@ async function Nn(e, t, n, r, s = {}) {
   r.onBatchEnd?.(t, n.length, s.unit ?? "rows");
 }
 async function Lc(e, t, n, r) {
+  const storage = r.storage;
+  const storageQuery = async (sql) => {
+    r.signal?.throwIfAborted();
+    const result = await t.runSql(sql);
+    r.signal?.throwIfAborted();
+    return result;
+  };
+  let storageBefore;
+  if (storage) {
+    r.signal?.throwIfAborted();
+    await assertStorageUnchanged(e, storage);
+    await waitForStorage(t, 60000, r.signal);
+    await assertStorageEmpty(storageQuery);
+    storageBefore = await storageShape(storageQuery);
+  }
   r.onSchemaStart?.(n.statements.length);
   let s = 0;
   for (let c of n.files) {
@@ -19127,6 +19176,7 @@ async function Lc(e, t, n, r) {
       r.onSchemaProgress?.(s, n.statements.length));
   }
   r.onSchemaEnd?.(n.statements.length);
+  if (storage) await assertStorageShape(storageQuery, storageBefore);
   let i = await ro(e, { target: r.authTarget ?? "supabase" }),
     o = {
       users: i.users.length,
@@ -19143,6 +19193,16 @@ async function Lc(e, t, n, r) {
         r.onSkip?.(
           `Skipped ${i.sessions.length} sessions and ${i.refresh_tokens.length} refresh tokens (existing tokens will be invalidated).`,
         ));
+  if (storage) {
+    await assertStorageShape(storageQuery, storageBefore);
+    r.onBatchStart?.("Migrating and verifying Storage", storage.objects.length);
+  }
+  const storageResult = storage ? await transferStorage(e, storage, t, r.signal) : null;
+  const storageBeforeData = storage
+    ? await storageState(storageQuery) : null;
+  if (storage) r.signal?.throwIfAborted();
+  if (storageResult) r.onBatchEnd?.("Migrated and verified Storage", storageResult.objects, "objects");
+  if (storage) r.signal?.throwIfAborted();
   let a = await co(e, n),
     l = a.filter((c) => c.inserts.length > 0);
   l.length === 0 && r.onSkip?.("No user data rows to migrate.");
@@ -19163,7 +19223,14 @@ async function Lc(e, t, n, r) {
       await t.updateAuthConfig(c),
       r.onAuthConfigEnd?.());
   }
-  return { schemaStatements: n.statements.length, auth: o, dataTables: a };
+  if (storage && (await storageState(storageQuery)) !== storageBeforeData) {
+    throw new Error("Application-row import changed verified Storage records; the target is partial and the upgrade failed");
+  }
+  if (storage) r.signal?.throwIfAborted();
+  return {
+    schemaStatements: n.statements.length, auth: o, dataTables: a,
+    ...(storageResult ? { storage: storageResult } : {}),
+  };
 }
 var Xh = b(() => {
   Wh();
@@ -19361,7 +19428,7 @@ async function tC(e) {
     (await he__default.mkdir(e, { recursive: true }),
     await Yr(["init", "--workdir", e, "--yes"], { timeoutMs: 6e4 }));
 }
-async function nC(e, t, n) {
+async function nC(e, t, n, storage) {
   let r = Fe__default.join(e, "supabase", "config.toml"),
     s = ZT(await he__default.readFile(r, "utf-8"));
   ((s = s.replace(/^project_id\s*=.*$/m, `project_id = "${t}"`)),
@@ -19375,13 +19442,14 @@ async function nC(e, t, n) {
     (s = le(s, "inbucket", "enabled", "false")),
     (s = le(s, "inbucket", "port", String(n.inbucket))),
     (s = le(s, "realtime", "enabled", "false")),
-    (s = le(s, "storage", "enabled", "false")),
+    (s = le(s, "storage", "enabled", String(!!storage))),
     (s = le(s, "edge_runtime", "enabled", "false")),
     (s = le(s, "edge_runtime", "inspector_port", String(n.edgeInspector))),
     (s = le(s, "analytics", "enabled", "false")),
     (s = le(s, "analytics", "port", String(n.analytics))),
     (s = le(s, "db.pooler", "enabled", "false")),
     (s = le(s, "db.pooler", "port", String(n.pooler))),
+    storage && (s = le(s, "storage", "file_size_limit", JSON.stringify(`${storage.globalLimit}B`))),
     await he__default.writeFile(r, s, "utf-8"));
 }
 function eg(e) {
@@ -19470,10 +19538,10 @@ var KT,
           i = await YT();
         try {
           (await tC(n),
-            await nC(n, r, i),
+            await nC(n, r, i, t.storage),
             await sC(n, t.sourceConfig),
             await Yr(
-              ["start", "--workdir", n, "--yes", "--exclude", zT.join(",")],
+              ["start", "--workdir", n, "--yes", "--exclude", zT.filter((service) => !t.storage || service !== "storage-api").join(",")],
               { timeoutMs: 5 * 6e4 },
             ));
           let { stdout: o } = await Yr(
@@ -19502,7 +19570,7 @@ var KT,
           ),
           r = n({ url: this.status.dbUrl });
         try {
-          await r.exec(t);
+          return await r.exec(t);
         } finally {
           await r.close();
         }
@@ -19781,6 +19849,7 @@ var Ce,
         .option("--project-name <name>", "Name for the new Supabase project")
         .option("--supabase-token <token>", "Supabase personal access token")
         .option("--local-dir <path>", "Supabase CLI workdir for --target local")
+        .option("--storage-quiescent", "Confirm source writers are stopped until Storage upgrade finishes", false)
         .option(
           "--migrate-sessions",
           "Transfer existing sessions, refresh tokens, and JWT secret so current tokens keep working",
@@ -19831,13 +19900,19 @@ var Ce,
               }
               let o = await Ph(i);
               if (n) {
+                const storage = await inspectStorage(i, { target: s, quiescent: t.storageQuiescent, adapterClass: Gs });
                 let R = await Oc(i, o);
+                if (storage) {
+                  const rehearsal = await Ih(i, o, { storage });
+                  R.storage = { buckets: storage.buckets.length, objects: storage.objects.length, rehearsal };
+                  R.summary.upgrade_safe &&= rehearsal.ok;
+                }
                 (r(JSON.stringify(R, null, 2)),
                   R.summary.upgrade_safe || process.exit(1));
                 return;
               }
               console.log(Ce.default.dim("Running readiness checks..."));
-              let a = await Wr("readiness", () => Ch(i, o));
+              let a = await Wr("readiness", () => Ch(i, o, { target: s, quiescent: t.storageQuiescent }));
               if ((jh(a), !a.ok))
                 throw new Error("Readiness checks failed. See errors above.");
               let l = async () => {
@@ -19845,7 +19920,7 @@ var Ce,
                   Ce.default.dim(`
 Rehearsing upgrade against in-memory pglite...`),
                 );
-                let R = await Wr("rehearsal", () => Ih(i, o));
+                let R = await Wr("rehearsal", () => Ih(i, o, { storage: a.storage }));
                 return (Fh(R), R.ok);
               };
               if (t.dryRun) {
@@ -19863,8 +19938,12 @@ Rehearsing upgrade against in-memory pglite...`),
                   throw new Error(
                     "--target local does not support preserving existing sessions yet. Re-run with --no-migrate-sessions.",
                   );
-                let R = Fe__default.resolve(t.localDir ?? Qh()),
-                  F = await Zh(R),
+                let R = Fe__default.resolve(t.localDir ?? Qh());
+                if (a.storage) {
+                  await requireFreshStorageDirectory(R, a.storage.root);
+                  await assertStorageUnchanged(i, a.storage);
+                }
+                let F = await Zh(R),
                   j = null;
                 if (F) {
                   let H = Fe__default.relative(process.cwd(), F) || F;
@@ -19879,6 +19958,7 @@ Rehearsing upgrade against in-memory pglite...`),
                       workdir: R,
                       cleanupOnStop: !1,
                       sourceConfig: i.config,
+                      storage: a.storage,
                     })),
                     w.stop(`Local Supabase is running at ${S.status.apiUrl}`),
                     (I = await Wr("apply", () =>
@@ -19886,6 +19966,7 @@ Rehearsing upgrade against in-memory pglite...`),
                         migrateSessions: !1,
                         authTarget: "supabase",
                         syncAuthConfig: !1,
+                        storage: a.storage,
                         onSql: (H, ne) => {
                           t.verbose &&
                             console.log(
@@ -19932,8 +20013,8 @@ ${j}`),
                   "Management API auth config sync is skipped for --target local; supported local auth settings are written before Supabase starts.",
                 ];
                 (j && D.unshift(j),
-                  i.config.storage?.enabled &&
-                    D.push("Storage migration is not yet supported."),
+                  I.storage &&
+                    D.push(`Storage verified: ${I.storage.buckets} buckets, ${I.storage.objects} objects, ${I.storage.bytes} bytes. Recreate signed URLs against the new endpoint; backend versions, ETags and update/access times regenerate.`),
                   i.config.realtime?.enabled &&
                     D.push("Realtime config migration is not yet supported."));
                 let K = Yh(S.status.dbUrl);
@@ -20696,7 +20777,9 @@ Dh();
 Xh();
 Ah();
 Hh();
+ef();
 export {
+  Gs as FileSystemStorageAdapter,
   Ph as collectUpgradeSource,
   co as exportUserData,
   ro as exportAuth,
