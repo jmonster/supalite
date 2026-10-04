@@ -10,8 +10,9 @@
   },
   "scripts": {
     "prepare:baseline": "node scripts/prepare-baseline.mjs",
-    "test": "npm run prepare:baseline && node --test --test-timeout=60000 --test-concurrency=1 test/*.test.mjs",
-    "check": "npm test"
+    "test": "npm run prepare:guest-onboarding && node --test --test-timeout=60000 --test-concurrency=1 test/*.test.mjs",
+    "check": "npm test",
+    "prepare:guest-onboarding": "node scripts/prepare-guest-onboarding.mjs"
   },
   "dependencies": {
     "kysely": "0.28.11"
