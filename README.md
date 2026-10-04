@@ -1,15 +1,12 @@
 # Supalite
 
-This repository preserves the published `@supabase/lite` **0.11.0** npm distribution as a reproducible baseline.
+An editable baseline of the published `@supabase/lite` **0.11.0** package. Main retains the original package's functionality; feature changes remain on their respective branches until merged.
 
-## Contents
+## Package
 
-- `upstream/lite-0.11.0/`: all 77 files from the [published npm tarball](https://registry.npmjs.org/@supabase/lite/-/lite-0.11.0.tgz), with their original bytes and file modes
-- `upstream/manifest.json`: package version, npm integrity, tarball SHA-256, and each file's SHA-256, size, and mode
-- `scripts/prepare-baseline.mjs`: validates the installed package, lockfile integrity, and complete vendored distribution, then copies the vendored files into `.generated/baseline/node_modules/@supabase/lite/`
-- `test/`: basic integration smoke tests using `@supabase/supabase-js` with the Node SQLite, libSQL, and PGlite adapters
+`upstream/lite-0.11.0/` contains the working JavaScript implementation, declarations, and package assets. The published JavaScript has been formatted for readability. The npm artifact does not include the original TypeScript sources.
 
-The npm artifact contains bundled JavaScript, type declarations, and package documentation. It does not contain the original upstream TypeScript implementation. The files under `upstream/lite-0.11.0/` are the published distribution.
+The exact original package is preserved in Git commit `514fe6148b412ad4fdfe3eb2b3baed916e7e4911` and the [npm tarball](https://registry.npmjs.org/@supabase/lite/-/lite-0.11.0.tgz). `upstream/manifest.json` records that original artifact's provenance and checksums.
 
 ## Run
 
@@ -18,17 +15,18 @@ Requires Node.js 24 or later.
 ```sh
 npm ci
 npm test
+node upstream/lite-0.11.0/dist/cli/index.js --help
 ```
 
-`npm test` first verifies and prepares the baseline, then creates a table on each adapter and checks SDK insert, select, equality-filter, and exact-count operations. Schema setup uses the package's migrator. These smoke tests do not establish comprehensive compatibility.
+Tests import the tracked working package directly:
 
-To verify and copy the distribution without running the smoke tests:
-
-```sh
-npm run prepare:baseline
+```js
+import { App } from "../upstream/lite-0.11.0/dist/index.js";
 ```
 
-Generated files and installed dependencies are ignored; the vendored `dist/` files are tracked.
+`test/helpers/lite.mjs` supplies the shared SQLite, libSQL, and PGlite SDK harness. The pinned npm `@supabase/lite@0.11.0` dev dependency is available for explicit original-version comparisons.
+
+Tests cover SDK insert, select, equality-filter, exact-count operations, export targets, and normal CLI behavior. They do not establish comprehensive compatibility.
 
 ## License
 

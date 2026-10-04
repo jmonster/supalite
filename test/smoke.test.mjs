@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createHarness } from "./helpers/lite.mjs";
 
 for (const backend of ["node", "libsql", "pglite"]) {
-  test(`${backend}: published baseline SDK insert, select, filter, and count`, async (t) => {
+  test(`${backend}: tracked implementation SDK insert, select, filter, and count`, async (t) => {
     const { client, close } = await createHarness({
       backend,
       ddl: "CREATE TABLE items (id integer PRIMARY KEY, name text NOT NULL, category text NOT NULL);",

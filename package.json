@@ -3,14 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Verified published @supabase/lite 0.11.0 baseline",
+  "description": "Directly editable @supabase/lite 0.11.0 implementation baseline",
   "license": "Apache-2.0",
   "engines": {
     "node": ">=24"
   },
   "scripts": {
-    "prepare:baseline": "node scripts/prepare-baseline.mjs",
-    "test": "npm run prepare:baseline && node --test --test-timeout=60000 --test-concurrency=1 test/*.test.mjs",
+    "test": "node --test --test-timeout=60000 --test-concurrency=1 test/*.test.mjs",
     "check": "npm test"
   },
   "dependencies": {

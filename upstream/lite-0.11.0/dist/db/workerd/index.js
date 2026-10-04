@@ -1,11 +1,208 @@
-import {Kysely}from'kysely';import {GenericSqliteDialect,parseBigInt}from'kysely-generic-sqlite';import {SqliteConnection}from'@supabase/lite';try {
-   /**
-    * Adding this to avoid warnings from node:sqlite being experimental
-    */
-   const { emitWarning } = process;
-   process.emitWarning = (warning, ...args) => {
-      if (warning.includes("SQLite is an experimental feature")) return;
-      return emitWarning(warning, ...args);
-   };
+import { Kysely } from "kysely";
+import { GenericSqliteDialect, parseBigInt } from "kysely-generic-sqlite";
+import { SqliteConnection } from "@supabase/lite";
+try {
+  /**
+   * Adding this to avoid warnings from node:sqlite being experimental
+   */
+  const { emitWarning } = process;
+  process.emitWarning = (warning, ...args) => {
+    if (warning.includes("SQLite is an experimental feature")) return;
+    return emitWarning(warning, ...args);
+  };
 } catch {}
-var d=r=>Number.parseInt(r.toString(),10);function m(r,e){let t=(i,o)=>{let a=e(o);try{return r.prepare(i).bind(...a)}catch(l){throw console.error(l),new Error(`Failed to prepare statement: ${i}`)}},n=i=>{if(i.error)throw new Error(i.error);let o=i.meta.changes>0?d(i.meta.changes):void 0;return {insertId:i.meta.last_row_id?d(i.meta.last_row_id):void 0,numAffectedRows:o,rows:i.results}};return {db:r,query:async(i,o,a)=>{let l=t(o,a);return n(await l.all())},close:()=>{}}}var s=class extends SqliteConnection{kysely;driver;constructor(e){super({...e,introspection:{...e.introspection,version:"3.47.0",name:"d1_sqlite",exclude_tables:[...e.introspection?.exclude_tables??[],"_cf_%","d1_migrations"]}}),this.driver=e.binding;let t=new GenericSqliteDialect(()=>m(this.driver,n=>this.prepareBindParams(n)),n=>{this.driver.prepare("pragma foreign_keys = on").run();});this.kysely=new Kysely({dialect:t,plugins:this.withSqlitePlugins()});}normalizeBindParams(e){let t=super.normalizeBindParams(e);for(let n=0;n<t.length;n++)typeof t[n]=="bigint"&&(t[n]=Number(t[n]));return t}async exec(e,...t){let n=e.trimStart().toUpperCase(),i=this.prepareBindParams(t),o=this.driver.prepare(e).bind(...i);if(n.startsWith("SELECT")||n.startsWith("WITH"))return {rows:(await o.all()).results??[]};await o.run();}async runInTransaction(e){return e(this.kysely)}async transaction(e,t){t?.intent==="migration"&&await this.driver.prepare("PRAGMA foreign_keys=OFF;").run(),await this.driver.batch(e.map(n=>this.driver.prepare(n))),t?.intent==="migration"&&await this.driver.prepare("PRAGMA foreign_keys=ON;").run();}};function f(r){return new s(r)}function S(r){return new s(r)}var C=async(r,e,t)=>t.length>0?await r.sql.exec(e,...t):await r.sql.exec(e),q=(r,e)=>{let t=e.rowsWritten>0?parseBigInt(e.rowsWritten):void 0,n=void 0,i=e.toArray()||[];return {insertId:n,numAffectedRows:t,rows:i,meta:{rowsWritten:e.rowsWritten,rowsRead:e.rowsRead,databaseSize:r.sql.databaseSize}}};function h(r,e){return {db:r,query:async(t,n,i)=>{let o=e(i),a=await C(r,n,o);return q(r,await a)},close:()=>{}}}var c=class extends SqliteConnection{kysely;driver;constructor(e){super({...e,introspection:{...e.introspection,version:"3.47.0",name:"do_sqlite",exclude_tables:[...e.introspection?.exclude_tables??[],"_cf_%","__miniflare_%"]}}),this.driver=e.storage;let t=new GenericSqliteDialect(()=>h(this.driver,n=>this.prepareBindParams(n)),n=>{this.driver.sql.exec("pragma foreign_keys = on");});this.kysely=new Kysely({dialect:t,plugins:this.withSqlitePlugins()});}normalizeBindParams(e){let t=super.normalizeBindParams(e);for(let n=0;n<t.length;n++)typeof t[n]=="bigint"&&(t[n]=Number(t[n]));return t}async exec(e,...t){let n=e.trimStart().toUpperCase(),i=this.prepareBindParams(t),o=i.length>0?this.driver.sql.exec(e,...i):this.driver.sql.exec(e);if(n.startsWith("SELECT")||n.startsWith("WITH"))return {rows:o.toArray()};o.toArray();}async runInTransaction(e){return this.driver.transaction(async()=>e(this.kysely))}async transaction(e,t){t?.intent==="migration"&&this.driver.sql.exec("PRAGMA foreign_keys=OFF;"),await this.driver.transaction(async n=>{try{for(let i of e)this.driver.sql.exec(i);}catch(i){throw n.rollback(),new Error(`Failed to execute transaction: ${i}`)}}),t?.intent==="migration"&&this.driver.sql.exec("PRAGMA foreign_keys=ON;");}};function x(r){return new c(r)}function v(r){return new c(r)}async function A(r){throw new Error("Not implemented")}export{s as D1SqliteConnection,c as DoSqliteConnection,A as createConnection,f as createD1SqliteConnection,x as createDoSqliteConnection,S as d1,v as doSqlite};
+var d = (r) => Number.parseInt(r.toString(), 10);
+function m(r, e) {
+  let t = (i, o) => {
+      let a = e(o);
+      try {
+        return r.prepare(i).bind(...a);
+      } catch (l) {
+        throw (
+          console.error(l),
+          new Error(`Failed to prepare statement: ${i}`)
+        );
+      }
+    },
+    n = (i) => {
+      if (i.error) throw new Error(i.error);
+      let o = i.meta.changes > 0 ? d(i.meta.changes) : void 0;
+      return {
+        insertId: i.meta.last_row_id ? d(i.meta.last_row_id) : void 0,
+        numAffectedRows: o,
+        rows: i.results,
+      };
+    };
+  return {
+    db: r,
+    query: async (i, o, a) => {
+      let l = t(o, a);
+      return n(await l.all());
+    },
+    close: () => {},
+  };
+}
+var s = class extends SqliteConnection {
+  kysely;
+  driver;
+  constructor(e) {
+    (super({
+      ...e,
+      introspection: {
+        ...e.introspection,
+        version: "3.47.0",
+        name: "d1_sqlite",
+        exclude_tables: [
+          ...(e.introspection?.exclude_tables ?? []),
+          "_cf_%",
+          "d1_migrations",
+        ],
+      },
+    }),
+      (this.driver = e.binding));
+    let t = new GenericSqliteDialect(
+      () => m(this.driver, (n) => this.prepareBindParams(n)),
+      (n) => {
+        this.driver.prepare("pragma foreign_keys = on").run();
+      },
+    );
+    this.kysely = new Kysely({ dialect: t, plugins: this.withSqlitePlugins() });
+  }
+  normalizeBindParams(e) {
+    let t = super.normalizeBindParams(e);
+    for (let n = 0; n < t.length; n++)
+      typeof t[n] == "bigint" && (t[n] = Number(t[n]));
+    return t;
+  }
+  async exec(e, ...t) {
+    let n = e.trimStart().toUpperCase(),
+      i = this.prepareBindParams(t),
+      o = this.driver.prepare(e).bind(...i);
+    if (n.startsWith("SELECT") || n.startsWith("WITH"))
+      return { rows: (await o.all()).results ?? [] };
+    await o.run();
+  }
+  async runInTransaction(e) {
+    return e(this.kysely);
+  }
+  async transaction(e, t) {
+    (t?.intent === "migration" &&
+      (await this.driver.prepare("PRAGMA foreign_keys=OFF;").run()),
+      await this.driver.batch(e.map((n) => this.driver.prepare(n))),
+      t?.intent === "migration" &&
+        (await this.driver.prepare("PRAGMA foreign_keys=ON;").run()));
+  }
+};
+function f(r) {
+  return new s(r);
+}
+function S(r) {
+  return new s(r);
+}
+var C = async (r, e, t) =>
+    t.length > 0 ? await r.sql.exec(e, ...t) : await r.sql.exec(e),
+  q = (r, e) => {
+    let t = e.rowsWritten > 0 ? parseBigInt(e.rowsWritten) : void 0,
+      n = void 0,
+      i = e.toArray() || [];
+    return {
+      insertId: n,
+      numAffectedRows: t,
+      rows: i,
+      meta: {
+        rowsWritten: e.rowsWritten,
+        rowsRead: e.rowsRead,
+        databaseSize: r.sql.databaseSize,
+      },
+    };
+  };
+function h(r, e) {
+  return {
+    db: r,
+    query: async (t, n, i) => {
+      let o = e(i),
+        a = await C(r, n, o);
+      return q(r, await a);
+    },
+    close: () => {},
+  };
+}
+var c = class extends SqliteConnection {
+  kysely;
+  driver;
+  constructor(e) {
+    (super({
+      ...e,
+      introspection: {
+        ...e.introspection,
+        version: "3.47.0",
+        name: "do_sqlite",
+        exclude_tables: [
+          ...(e.introspection?.exclude_tables ?? []),
+          "_cf_%",
+          "__miniflare_%",
+        ],
+      },
+    }),
+      (this.driver = e.storage));
+    let t = new GenericSqliteDialect(
+      () => h(this.driver, (n) => this.prepareBindParams(n)),
+      (n) => {
+        this.driver.sql.exec("pragma foreign_keys = on");
+      },
+    );
+    this.kysely = new Kysely({ dialect: t, plugins: this.withSqlitePlugins() });
+  }
+  normalizeBindParams(e) {
+    let t = super.normalizeBindParams(e);
+    for (let n = 0; n < t.length; n++)
+      typeof t[n] == "bigint" && (t[n] = Number(t[n]));
+    return t;
+  }
+  async exec(e, ...t) {
+    let n = e.trimStart().toUpperCase(),
+      i = this.prepareBindParams(t),
+      o =
+        i.length > 0 ? this.driver.sql.exec(e, ...i) : this.driver.sql.exec(e);
+    if (n.startsWith("SELECT") || n.startsWith("WITH"))
+      return { rows: o.toArray() };
+    o.toArray();
+  }
+  async runInTransaction(e) {
+    return this.driver.transaction(async () => e(this.kysely));
+  }
+  async transaction(e, t) {
+    (t?.intent === "migration" &&
+      this.driver.sql.exec("PRAGMA foreign_keys=OFF;"),
+      await this.driver.transaction(async (n) => {
+        try {
+          for (let i of e) this.driver.sql.exec(i);
+        } catch (i) {
+          throw (
+            n.rollback(),
+            new Error(`Failed to execute transaction: ${i}`)
+          );
+        }
+      }),
+      t?.intent === "migration" &&
+        this.driver.sql.exec("PRAGMA foreign_keys=ON;"));
+  }
+};
+function x(r) {
+  return new c(r);
+}
+function v(r) {
+  return new c(r);
+}
+async function A(r) {
+  throw new Error("Not implemented");
+}
+export {
+  s as D1SqliteConnection,
+  c as DoSqliteConnection,
+  A as createConnection,
+  f as createD1SqliteConnection,
+  x as createDoSqliteConnection,
+  S as d1,
+  v as doSqlite,
+};

@@ -1,20 +1,10 @@
 import { createClient } from "@supabase/supabase-js";
+import { App } from "../../upstream/lite-0.11.0/dist/index.js";
+import { createConnection } from "../../upstream/lite-0.11.0/dist/db/node/index.js";
+import { createLibsqlConnection } from "../../upstream/lite-0.11.0/dist/db/libsql/index.js";
+import { createPgliteConnection } from "../../upstream/lite-0.11.0/dist/db/postgres/pglite/PgliteConnection.js";
 
-export async function modules(flavor = "baseline") {
-  const packageRoot = new URL(
-    `../../.generated/${flavor}/node_modules/@supabase/lite/`,
-    import.meta.url,
-  );
-  const { App } = await import(new URL("dist/index.js", packageRoot));
-  const { createConnection } = await import(
-    new URL("dist/db/node/index.js", packageRoot)
-  );
-  const { createLibsqlConnection } = await import(
-    new URL("dist/db/libsql/index.js", packageRoot)
-  );
-  const { createPgliteConnection } = await import(
-    new URL("dist/db/postgres/pglite/PgliteConnection.js", packageRoot)
-  );
+export function modules() {
   return {
     App,
     factories: {
@@ -26,13 +16,12 @@ export async function modules(flavor = "baseline") {
 }
 
 export async function createHarness({
-  flavor = "baseline",
   backend = "node",
   ddl,
   auth = { enabled: false },
   token,
 } = {}) {
-  const { App, factories } = await modules(flavor);
+  const { App, factories } = modules();
   const connection = await factories[backend](
     backend === "pglite" ? undefined : { url: ":memory:" },
   );

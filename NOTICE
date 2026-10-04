@@ -1,6 +1,8 @@
 Supalite
 
-Includes the unmodified @supabase/lite 0.11.0 npm distribution.
+Derived from the @supabase/lite 0.11.0 npm distribution.
 Copyright 2026 Supabase. Licensed under the Apache License, Version 2.0.
 The upstream license is preserved in LICENSE and upstream/lite-0.11.0/LICENSE.
-Package and file checksums are recorded in upstream/manifest.json.
+Original package and file checksums are recorded in upstream/manifest.json.
+The JavaScript implementation was formatted for direct editing; original bytes
+are preserved in Git commit 514fe6148b412ad4fdfe3eb2b3baed916e7e4911.
