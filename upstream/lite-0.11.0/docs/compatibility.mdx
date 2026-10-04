@@ -86,7 +86,7 @@ RLS works across all backends but is enforced differently: SQLite rewrites the P
 | Permissive / restrictive policies, `FOR` command targeting, `TO role` | ✅ | ✅ | ✅ |
 | `auth.uid()` / `auth.jwt()` in policies | ✅ | ✅ | ✅ |
 | Subquery `WITH CHECK` on INSERT | ❌ | ✅ | ✅ |
-| `DEFAULT auth.uid()` on columns | ❌ | ✅ | ✅ |
+| `DEFAULT auth.uid()` on columns | Partial: Data API inserts/upserts only; see [RLS](/database/rls) | ✅ | ✅ |
 | Standalone `DROP POLICY` / `ALTER POLICY` | ✅ | ✅ | ✅ |
 
 See [Database: RLS](/database/rls) for the enforcement model and workarounds.

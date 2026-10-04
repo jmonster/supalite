@@ -26,7 +26,7 @@ create policy "update own" on <thing> for update to authenticated using (auth.ui
 create policy "delete own" on <thing> for delete to authenticated using (auth.uid() = user_id);
 ```
 
-The client supplies `user_id` on insert (SQLite RLS evaluates `WITH CHECK` against supplied values; there is no `DEFAULT auth.uid()` on SQLite — see [LIMITATIONS.md](https://github.com/supabase/lite/blob/HEAD/LIMITATIONS.md#sql--ddl-sqlite-path)):
+With the schema above, the client supplies `user_id`. Alternatively, add `DEFAULT auth.uid()` to that column and omit it from Data API inserts; SQLite resolves it before the ownership check. Direct SQL and trigger/view-mediated writes still need explicit owner values; see [Column Defaults](STATUS.md#column-defaults).
 
 ```ts
 const { data: { session } } = await supabase.auth.getSession();

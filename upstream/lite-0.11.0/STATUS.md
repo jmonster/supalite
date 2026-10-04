@@ -170,7 +170,7 @@ Unsupported PostgreSQL data types currently include `oid`, `xid`, `xid8`, `cid`,
 
 ### Column Defaults
 
-Column `DEFAULT` expressions in Postgres DDL are evaluated by the SQLite translator at CREATE TABLE time. Only constant expressions and a small allow-list of functions are honored.
+Column `DEFAULT` expressions in Postgres DDL are translated when the schema is applied. SQLite evaluates supported native defaults at write time; the Data API resolves the request-specific `auth.uid()` exception below.
 
 **Honored:**
 
@@ -188,7 +188,7 @@ Column `DEFAULT` expressions in Postgres DDL are evaluated by the SQLite transla
 
 **Not honored — fails with `Function call "<name>" not supported`:**
 
-- `auth.uid()`, `auth.role()`, `auth.email()`, `auth.jwt()` — these read JWT claims and have no SQLite equivalent. They only work inside RLS `USING` / `WITH CHECK` (rewritten on the AST), not as column defaults.
+- `auth.role()`, `auth.email()`, `auth.jwt()` — these remain unsupported as SQLite column defaults. The narrow `auth.uid()` exception below does not add a general SQL function evaluator.
 - `currval(...)`, and a bare `SELECT nextval(...)` statement.
 - `clock_timestamp()`, `statement_timestamp()`, `transaction_timestamp()`, `txid_current()`, and other volatile catalog functions.
 - User-defined functions and any function not in the allow-list above.
@@ -198,20 +198,18 @@ Column `DEFAULT` expressions in Postgres DDL are evaluated by the SQLite transla
 - `CREATE SEQUENCE` and `ALTER SEQUENCE ... OWNED BY` emit no SQLite DDL. Sequences are not modeled.
 - `DEFAULT nextval('seq')` on a `serial` or identity primary key becomes `INTEGER PRIMARY KEY AUTOINCREMENT`, also in the expanded `CREATE SEQUENCE` + `DEFAULT nextval(...)` form. On any other column the default is removed. A `NOT NULL` column then fails on the next insert that does not supply a value.
 
-**Workaround for `default auth.uid()`:**
+**Request-specific `DEFAULT auth.uid()` (SQLite Data API only):**
 
-Drop the default; pass `user_id` from the client on insert (sourced from the authenticated session). RLS `WITH CHECK (user_id = auth.uid())` already enforces ownership server-side.
+A bare, zero-argument `DEFAULT auth.uid()` is retained in translation metadata and resolved from the verified request's user ID before INSERT ownership checks. Parentheses and quoted lowercase `"auth"."uid"()` are accepted; casts, composed expressions, other schemas, and other auth functions are not added to the SQL function allow-list.
 
-```sql
--- Instead of:
-user_id uuid not null default auth.uid() references auth.users (id),
+- Data API inserts and upserts fill omitted owner columns. Explicit values, including `null`, are preserved and remain subject to normal RLS and column constraints. A default is not an ownership policy; keep `WITH CHECK (auth.uid() = user_id)`.
+- A logged-out request defaults to `null`. An anonymous signed-in JWT with a subject uses that subject, just like another authenticated user. This does not implement anonymous signup.
+- For mixed bulk payloads, an owner column included in the request's `columns` list but missing from a row is `null` by default. Use `.insert(rows, { defaultToNull: false })` / `Prefer: missing=default` to use the UID instead. A column omitted from the entire INSERT uses its default. An omitted owner column does not become a conflict UPDATE assignment in an upsert.
+- Resolution is per request, without storing the current user on the connection. Ordinary PATCH requests do not reapply INSERT defaults.
+- This is **not a database-wide SQLite function**: physical DDL uses `DEFAULT NULL`. Direct SQL, triggers, and view-mediated writes do not acquire the caller's identity; a missing NOT NULL owner fails. SQL `DEFAULT` expressions and PUT/PATCH missing-default expansion are not emulated. For these paths, pass the owner explicitly or use Postgres.
+- Keep translation metadata: the CLI persists/rebuilds it from migrations; embedded callers use `createMigrator()` or preserve the returned translation metadata in `translation.deparse`. Copying only translated SQL loses this API behavior.
 
--- Use:
-user_id uuid not null references auth.users (id),
--- and rely on a WITH CHECK policy to bind the row to the caller.
-```
-
-This limitation applies only to the SQLite path. On PGlite/Postgres backends, `auth.uid()` works as a column default because the `auth.uid()` SQL function is bootstrapped natively.
+PGlite/Postgres continue to use their native `auth.uid()` SQL function and column default. References: [Supabase ownership example](https://supabase.com/docs/guides/database/tables), [auth identity](https://supabase.com/docs/guides/database/postgres/row-level-security), [PostgREST missing values](https://docs.postgrest.org/en/stable/references/api/preferences.html#missing).
 
 ### CHECK constraint functions
 
