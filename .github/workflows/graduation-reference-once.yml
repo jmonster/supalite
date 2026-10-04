@@ -1,0 +1,63 @@
+name: Authenticated graduation qualification
+on:
+  push:
+    branches:
+      - verification/authenticated-graduation-20261004
+permissions:
+  contents: read
+concurrency:
+  group: graduation-reference-once
+  cancel-in-progress: false
+jobs:
+  qualify:
+    if: >-
+      ${{ !github.event.created && !github.event.deleted && github.event.head_commit.message == 'test: qualify authenticated populated graduation' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    env:
+      QUALIFIER_SHA: ${{ github.sha }}
+      QUALIFICATION_BRANCH: ${{ github.ref_name }}
+      CANDIDATE_DIR: ${{ github.workspace }}/candidate
+    steps:
+      - name: Reserve private storage and cleanup time
+        shell: bash
+        run: |
+          printf 'QUALIFICATION_ROOT=%s/graduation-reference-%s-%s\n' "$RUNNER_TEMP" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" >> "$GITHUB_ENV"
+          printf 'QUALIFICATION_DEADLINE_AT=%s\n' "$(( $(date +%s) * 1000 + 15 * 60 * 1000 ))" >> "$GITHUB_ENV"
+      - name: Check out deliberate qualifier commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          path: candidate
+      - name: Set up Bun1.4.2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: '1.4.2'
+      - name: Verify approved feature tree and immutable fixture
+        run: bun --no-install candidate/scripts/qualify-graduation-reference.mjs --validate
+      - name: Install frozen candidate dependencies
+        timeout-minutes: 3
+        working-directory: candidate
+        run: bun install --frozen-lockfile
+      - name: Qualify populated graduation through the public CLI
+        timeout-minutes: 14
+        run: bun --no-install candidate/scripts/qualify-graduation-reference.mjs
+      - name: Stop owned services
+        timeout-minutes: 2
+        if: always()
+        shell: bash
+        run: |
+          if [[ -n "${QUALIFICATION_ROOT:-}" && -f candidate/scripts/qualify-graduation-reference.mjs ]]; then
+            bun --no-install candidate/scripts/qualify-graduation-reference.mjs --cleanup
+          fi
+      - name: Save sanitized receipt
+        timeout-minutes: 1
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: graduation-reference-${{ github.run_id }}
+          path: ${{ env.QUALIFICATION_ROOT }}/receipt/
+          if-no-files-found: warn
+          retention-days: 7
