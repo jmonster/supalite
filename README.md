@@ -2,6 +2,10 @@
 
 An editable baseline of the published `@supabase/lite` **0.11.0** package. Main retains the original package's functionality; feature changes remain on their respective branches until merged.
 
+## Repeated filters
+
+Repeated filters on one column are combined with AND. For example, `.neq('category', 'fruit').neq('category', 'vegetable')` excludes both categories. This also preserves repeated negated filters and existing logical groups on Node SQLite, libSQL, and PGlite; `npm test` includes regressions across all three adapters.
+
 ## Package
 
 `upstream/lite-0.11.0/` contains the working JavaScript implementation, declarations, and package assets. The published JavaScript has been formatted for readability. The npm artifact does not include the original TypeScript sources.
