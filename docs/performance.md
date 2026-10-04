@@ -2,9 +2,21 @@
 
 ## Reproduce
 
-Run `npm ci`, then `npm run benchmark` on Node 24 or later. The command imports the checked-in working package directly and the unmodified pinned npm package as a separately labeled reference. No hosted account, network database, native extension, or CI service is needed.
+Install this branch's pinned dependencies with Bun 1.4.2:
 
-The benchmark writes `reports/benchmark.json` and prints concise timing rows. The report is incremental. A supervising process stops the benchmark worker after a 50-second default safety budget, including when a synchronous SQLite query blocks JavaScript. A stopped or failed run is explicitly marked incomplete and exits nonzero; its partial results are not a complete benchmark. For a slower machine, use `npm run benchmark -- --budget-ms=120000`.
+```sh
+bun install --frozen-lockfile
+```
+
+The recorded measurements below used native Node, not Bun. For an optional new run of the Node-oriented benchmark harness against the current checkout, install Node 24 or later separately and invoke it directly:
+
+```sh
+node scripts/benchmark.mjs
+```
+
+The command imports the checked-in working package and the pinned npm package as a separately labeled reference. No hosted account, network database, native extension or CI service is needed. The current `bun run benchmark` package script uses Bun; it does not reproduce the recorded native-Node runtime, and the harness retains Node-oriented report labels. The documented historical timings are not fresh measurements of this Bun-tooling revision.
+
+The benchmark writes `reports/benchmark.json` and prints concise timing rows. The report is incremental. A supervising process stops the benchmark worker after a 50-second default safety budget, including when a synchronous SQLite query blocks JavaScript. A stopped or failed run is explicitly marked incomplete and exits nonzero; its partial results are not a complete benchmark. For a slower machine, use `node scripts/benchmark.mjs --budget-ms=120000`.
 
 Counts are checked on the warm-up and every measured execution. The process budget limits resource use; it is not a performance threshold.
 
@@ -25,13 +37,9 @@ The schema-specific reference knows the fixture's types and field layout. It is 
 
 ## Implementation tradeoffs
 
-The object-only fast path uses bound guard paths, explicit ancestor/type checks, and binary string comparison. Verified stored-column inputs can expose top-level string/number equalities to matching `column ->> 'member'` expression indexes; the [eligibility rules](design-and-porting.md#specialized-object-containment) exclude computed or unknown sources. It preserves missing-key, JSON-null, and SQL-null distinctions. A second, bounded `json_each` specialization handles shapes up to filter depth three, including arrays and arbitrary member names. Deeper patterns use the general compiler. Every SQL timing row records which plan actually ran; the fast shallow-array numbers must not be presented as general-plan timings.
+The [compiler design](design-and-porting.md#compiler-structure) describes the object/index, shallow and general plans, including index eligibility. Each timing row identifies its plan; shallow-array timings do not describe the general plan.
 
-The general plan uses JSON1 traversal and bottom-up containment match sets. It preserves array-element grouping and supports nested objects and arrays in both directions. Runtime traversal only needs the filter's maximum structural depth plus one; the extra level witnesses disallowed children beneath expected empty containers. Complete node identities and compact ancestor metadata avoid repeatedly joining every matching child back across all document nodes.
-
-These are compatibility filters, not a replacement for PostgreSQL GIN indexes. Whole-table scans and large arrays can be expensive. Apply selective indexed relational predicates, such as tenant or document ID, before JSON matching when the application permits it. For a fixed production schema and a hot query, a purpose-built SQL predicate or generated/indexed column can be substantially faster.
-
-The compiler deliberately bounds filter depth, node count, and parameters. The adapter also checks the complete request's SQL and parameter budgets. Arbitrary-precision PostgreSQL numeric behavior and raw duplicate-object-label canonicalization are not covered by these benchmarks.
+Whole-table scans and large arrays can be expensive; these filters do not provide PostgreSQL GIN indexing. Selective relational predicates or schema-specific indexed expressions can be faster. Filter-depth, node, parameter and SQL-size budgets bound query complexity, not latency. Arbitrary-precision numbers and duplicate-object-label canonicalization remain outside these benchmarks.
 
 ## Stored-column index measurements
 
@@ -48,8 +56,8 @@ The SQL was captured from actual SDK requests and replayed without rewriting; SD
 
 The optional index occupied **704 KiB**, about **14.42 bytes/document** or 4.2% of table pages. In separate 5,000-row local-driver transactions, indexed insert/update medians were 67%/117% higher on Node and 18%/23% higher on libSQL. These measure index-maintenance cost, not added compiler write work; no disk durability, network or concurrent workloads were measured. The compiler creates no index and adds no dependency. Its metadata gate uses existing introspection without a database call; an auxiliary compile-only comparison added about 5 μs for a synthetic 1,000-table schema with the target last, and approximately zero for small/target-first contexts.
 
-These results support a narrow improvement for an existing, matching index on a selective top-level member. They do not establish universal performance gains. `npm test` includes the reproducible SDK/migration/EXPLAIN regression in `test/indexed-object.test.mjs`, both indexed and unindexed, plus live PostgreSQL semantic comparisons; timings are observations, not test thresholds.
+These results support a narrow improvement for an existing, matching index on a selective top-level member. They do not establish universal performance gains. `bun run test` includes the reproducible SDK/migration/EXPLAIN regression in `test/indexed-object.test.mjs`, both indexed and unindexed, plus live PostgreSQL semantic comparisons; timings are observations, not test thresholds.
 
 Exact baseline/candidate source SHA-256 identities, captured SQL/bindings/plans, verified counts, raw samples and index/write measurements are in the [compact measurement record](indexed-object-measurements.json). This record preserves the observed timings; the committed SDK test reproduces correctness and plans, not the numerical timing collection.
 
-The indexed-object measurement record is historical evidence from the earlier implementation layout. Its source hashes and timings are retained exactly as measured; they are not fresh measurements of this direct-file layout. The current tests reproduce correctness and query plans, and `npm run benchmark` writes a new local report.
+The indexed-object measurement record is historical evidence from the earlier implementation layout. Its source hashes and timings are retained exactly as measured; they are not fresh measurements of this direct-file layout. The current tests reproduce correctness and query plans, and the direct Node command above writes a new local report.

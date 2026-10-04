@@ -82,11 +82,7 @@ The existing identifier resolver still owns qualification and quoting. The adapt
 
 The JSON-path adapter uses direct-parent steps over a materialized tree and supports negative array indexes. Path extraction is a separate layer from containment. A path with more than 16 steps is rejected; a missing path yields SQL NULL.
 
-### Repeated-column filters are a separate fix
-
-The baseline parser merges per-column operator objects. Repeating an operator could overwrite an earlier predicate, including nested `$not` maps. `mergeFilter` moves a repeated operator into an explicit `$and` term; distinct operators can still share a column's operator map. Existing conjunction groups must also be appended to rather than overwritten.
-
-This parser correction applies to both dialects and is independently portable. It does not require the JSONB SQL compiler. In particular, `NOT A AND NOT B` must never become `NOT (A AND B)` during a merge.
+Repeated-column handling is supplied by [#18](https://github.com/jmonster/supalite/pull/18), a separate parser fix required by this branch.
 
 ## Limits and input boundary
 
@@ -113,8 +109,4 @@ Budgets limit generated-query complexity, not table size or total latency. A bro
 
 ## Direct package integration
 
-The checked-in [`upstream/lite-0.11.0/dist/index.js`](../upstream/lite-0.11.0/dist/index.js) directly integrates repeated-column conjunctions, raw-literal preservation, ordinary and negated JSONB predicate dispatch, and final-query validation. Its package-local imports select the readable JavaScript helpers in [`dist/query/`](../upstream/lite-0.11.0/dist/query/). The package is self-contained when packed; tests do not construct another runtime.
-
-The shared harness imports this working implementation directly. A separate published-reference helper imports the unmodified pinned npm package only for explicitly labeled behavioral comparisons and benchmarks.
-
-The original npm artifact included bundled JavaScript, type declarations, documentation, and an Apache-2.0 license, but no original TypeScript implementation, source maps, or upstream test/build setup. Its historical checksums remain in `upstream/manifest.json` and the exact original bytes in Git commit `514fe6148b412ad4fdfe3eb2b3baed916e7e4911`.
+The runtime imports its package-local [`dist/query/` helpers](../upstream/lite-0.11.0/dist/query/) directly. Shared tests import the working package; the separate published-reference harness is used only for labeled baseline comparisons and benchmarks. See [Package and provenance](../README.md#package-and-provenance) for the original artifact and provenance.

@@ -321,23 +321,3 @@ export function generatedCases(seed = 0x5eedb, count = 500) {
       : caseOf(`seed_${seed}_${i}`, b, a, "generated");
   });
 }
-
-export const invalidOperands = [
-  "",
-  " ",
-  "{x:1}",
-  "[1,]",
-  "NaN",
-  "Infinity",
-  "+1",
-  "01",
-  ".1",
-  "1.",
-  '{"a":undefined}',
-  "true false",
-  '"\\u0000"',
-  '"\\ud800"',
-  '"\\udc00"',
-  '{"a":/*comment*/1}',
-  "1e1000000",
-];

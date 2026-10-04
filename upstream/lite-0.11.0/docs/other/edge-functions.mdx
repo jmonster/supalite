@@ -17,29 +17,18 @@ Automatic Functions execution requires **Bun 1.4.2 or later**. Bun 1.4.2 is the 
 
 Bun loads the TypeScript source directly and resolves packages from normal installed dependencies. Install dependencies before starting Lite. This path has no Lite-specific resolver, bundling step, or managed dependency cache.
 
-## Run the portable SQLite example
+## Run the authenticated SQLite example
 
-The repository's `examples/functions-portable` contains a conventional `tasks` function, SDK client, PostgreSQL-format migration, and separate local and Supabase configurations. From the repository root:
-
-```sh
-bun install
-cd examples/functions-portable
-bun install
-bun ../../upstream/lite-0.11.0/dist/cli/index.js dev \
-  --config supabase/config.lite.toml --no-admin
-```
-
-`lite dev` applies the normal migration automatically. The example's `db.driver = "sqlite-postgres"` selects PostgreSQL-to-SQLite translation; Bun's existing SQLite adapter provides the connection. Data persists in `.lite/tasks.sqlite`.
-
-In another terminal, from `examples/functions-portable`:
+The integration branch's [graduation guide](../../../../examples/functions-portable/README.md) uses two users, an owned task, a private attachment and one portable TypeScript function. From the repository root:
 
 ```sh
-SUPABASE_URL=http://127.0.0.1:54321 \
-SUPABASE_PUBLISHABLE_KEY=sb_publishable_portability_demo \
-bun app/acceptance.mjs
+bun install --frozen-lockfile
+bun examples/functions-portable/graduate.mjs --lite-only
 ```
 
-The eight acceptance checks exercise create, read, update, read-after-update, independent Data API read, validation errors, function-owned `OPTIONS`, and production-style path/query routing. The demo disables gateway JWT verification and user sign-in and uses local placeholder keys. Add application authorization before exposing it.
+The command creates an isolated project and verifies password sign-in, caller identity, row/file ownership and exact attachment bytes. Gateway JWT verification is enabled, and the function validates the caller with `auth.getUser()`. Only disposable local accounts bypass email confirmation; fixture keys and passwords are unsuitable for deployment.
+
+For manual use or the complete populated upgrade to local Supabase, follow the guide. It includes the required experimental Storage setting, native-host prerequisites and session-migration limits.
 
 ## Source and dependency portability
 
@@ -76,7 +65,7 @@ For Supabase, the example's `supabase/functions/tasks/deno.json` maps both bare 
 
 This is deployment configuration; Bun does not use `deno.json`, `deno.jsonc`, or Deno import maps to resolve modules. Lite rejects a configured `functions.<name>.import_map` for local execution. Direct `npm:` / `jsr:` specifiers, `Deno.serve`, and other Deno APIs are not supported by this path. Existing functions that use those features need source changes before they fit the portable subset. Keep Bun-only APIs out of source intended for Supabase, and verify your dependencies on both runtimes.
 
-The example's function source and eight-check SDK client have passed on Bun 1.4.2 and locally against official Supabase Edge Runtime 1.77.1. The function file was identical in both runs; only runtime and dependency configuration differed. This establishes that example's portability, not arbitrary-function compatibility, performance, or hosted deployment. Use Supabase's normal tooling with `supabase/config.toml`, the migration, function, and app files to deploy; supply that project's URL and keys. SQLite's documented SQL/API limitations still apply locally.
+The [populated graduation qualification](https://github.com/jmonster/supalite/actions/runs/37235887887) verifies this integration branch's unchanged function and application files before and after migration to official local Supabase. This establishes the example's portability, not arbitrary-function compatibility, performance or hosted deployment. SQLite's documented SQL/API limitations still apply locally.
 
 ## Discovery, environment, and refresh
 

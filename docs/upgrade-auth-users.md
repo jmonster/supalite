@@ -33,8 +33,8 @@ The tracked CLI calls this package-local helper directly in its Supabase-target 
 ## Verification
 
 ```sh
-npm ci
-npm test
+bun install --frozen-lockfile
+bun test --bail --timeout 60000 test/auth-upgrade.test.mjs
 ```
 
 Tests create real Lite Auth users, import the tracked production exporter, and apply its SQL to PGlite with the relevant Supabase auth-schema difference. The corrected user is discoverable by GoTrue's lookup predicate, retains the exact password hash, verifies the original password, rejects a different password, and preserves IDs, confirmation state and metadata. The local rehearsal export retains its original representation.

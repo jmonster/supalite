@@ -35,7 +35,7 @@ behavior and general identifier/value serialization are outside this change.
 
 ## Verification
 
-Run `npm ci && npm test` on Node 24+. Tests import the tracked production exporter directly and replay its SQL on fresh PGlite:
+Run `bun install --frozen-lockfile`, then `bun test --bail --timeout 60000 test/upgrade-identity.test.mjs test/upgrade-identity-sequences.test.mjs`. Tests import the tracked production exporter directly and replay its SQL on fresh PGlite:
 
 - Both drivers verify that omitting the override/reset reproduces the errors, then preserve IDs, FK links,
   computed values, ordinary serial SQL, and successful next generated IDs

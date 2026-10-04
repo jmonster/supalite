@@ -4,7 +4,14 @@ A two-user app, one unchanged TypeScript function, SQLite and local Supabase. Th
 
 ## Run
 
-From the repository root, with Bun 1.4.2 and Supabase CLI 2.119.0 installed:
+This example is on `integration/graduation-demo`; `main` contains only the baseline. For a fresh checkout:
+
+```sh
+git clone --branch integration/graduation-demo --single-branch https://github.com/jmonster/supalite.git
+cd supalite
+```
+
+In an existing clone, run `git switch integration/graduation-demo` instead. From that branch's repository root, with Bun 1.4.2 and Supabase CLI 2.119.0 installed:
 
 ```sh
 bun install --frozen-lockfile
@@ -56,6 +63,6 @@ Point the same client at the printed target URL/key and run `DEMO_PHASE=verify` 
 
 ## Limits
 
-This demonstrates one SQLite-filesystem-to-local-Supabase route. It does not establish hosted deployment, Realtime, email delivery, OAuth, every RLS expression or every Storage backend. Sessions and refresh tokens are deliberately not migrated. Users sign in again. Signed URLs must be recreated. Storage backend versions, ETags and update/access times may change; logical object identity and bytes must not.
+This verifies one populated SQLite/filesystem project graduating to the official Supabase stack run locally: Postgres, Auth, Data API, Storage and Edge Runtime, with unchanged application and function source. Deployment to managed hosted Supabase has not been qualified. Sessions and refresh tokens are deliberately not migrated. Users sign in again. Signed URLs must be recreated. Storage backend versions, ETags and update/access times may change; logical object identity and bytes must not.
 
 Both configurations disable email confirmation only for disposable local accounts. The checked-in keys, JWT secret and password are fixture values, unsuitable for a real deployment. Functions execute trusted project code; Lite's Bun worker is not a security sandbox. The qualification requires native Supabase Storage and Edge Runtime together in one run; older independent receipts are not evidence for this complete route.

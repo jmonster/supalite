@@ -876,7 +876,7 @@ Mirrors upstream behavior documented in [`internal/docs/cli/environment.md`](htt
 | **Storage**        | 🔄     | Config schema defined (`app/src/config/storage.ts`). Buckets, file size limits, image transformation. |
 | **Drivers**        | ✅      | Email, SMS, cache, and trusted Functions executor interfaces. Configured via `options.drivers`, exposed at `app.drivers`. |
 | **Realtime**       | 🔄     | Config schema defined (`app/src/config/realtime.ts`).                                                 |
-| **Edge Functions** | ⚠️ | Bun-hosted `dev` / `start` discovers conventional function files and configured entrypoints. Default-export `{ fetch }` TypeScript handlers run in native workers in the Lite process, using installed package dependencies. `oneshot` / `per_worker` policies, deadlines, worker termination, scoped initial environment, and local file refresh. Gateway verifies configured/resolved keys or HS256 JWTs; custom executors override. Requires Bun 1.4.2+. No Deno API/import-map emulation, hosted deployment, Supabase-specific `EdgeRuntime` API, WebSocket upgrades, or permission sandbox. See [Functions](docs/other/edge-functions.mdx). |
+| **Edge Functions** | ⚠️ | Bun 1.4.2+ `dev` / `start` serves portable default-export `{ fetch }` handlers. Trusted code only; workers have host permissions. See [Functions setup and limits](docs/other/edge-functions.mdx). |
 | **Vite plugin**    | ✅      | `@supabase/lite/vite` subpath export mounts supalite as middleware in a Vite dev server (`app/src/vite/`). See [Vite plugin scope](#vite-plugin-scope). |
 
 ### Vite plugin scope

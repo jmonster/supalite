@@ -36,7 +36,7 @@ const { data: signedIn } = await supabase.auth.signInWithPassword({
 
 The complete runnable tests check every API result, persisted identity and draft,
 refresh, database reopen, and a real loopback HTTP server with captured email.
-Run `npm ci && npm test`; no external accounts or email delivery are used.
+Run `bun install --frozen-lockfile && bun run test`; no external accounts or email delivery are used.
 
 ## Behavior
 

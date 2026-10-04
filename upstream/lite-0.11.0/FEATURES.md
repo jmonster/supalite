@@ -146,9 +146,7 @@ storage-api-compatible endpoints at `/storage/v1/*` (`app/src/storage/`), with p
 
 ## Edge Functions
 
-Partial: run the existing CLI under Bun 1.4.2+ for normal `dev` / `start`. It discovers `supabase/functions/<name>/index.ts` and configured entrypoints, loading default-export `{ fetch }` TypeScript handlers in native workers within the Lite process. Normal installed package dependencies and matching Supabase dependency configuration let portable function source graduate unchanged. `_shared` and disabled functions are not endpoints.
-
-Bun loads the source and packages directly; no custom compiler, resolver, or Functions service is required. Deno APIs and import-map resolution are outside the portable subset. The Fetch-based core retains the advanced `options.drivers.functions.fetch(request, context)` override for embedded/custom hosts. Workers run trusted code with host permissions; Bun's Worker API is experimental. See [Functions setup, example, and limits](docs/other/edge-functions.mdx).
+Partial: Bun 1.4.2+ serves portable default-export `{ fetch }` handlers through `dev` / `start`. Workers run trusted code with host permissions; see the [canonical setup and compatibility guide](docs/other/edge-functions.mdx).
 
 | Capability | Status | Effort | Blocker | Notes |
 |------------|:------:|:------:|:-------:|-------|

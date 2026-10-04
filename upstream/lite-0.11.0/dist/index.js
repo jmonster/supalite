@@ -14311,6 +14311,8 @@ function DE(t) {
 function ne(t, e = "postgres", n) {
   let r = DE(e),
     s = n && "introspection" in n ? n : { db: n, introspection: void 0 };
+  // Nested builders copy the context but share this query-local usage flag.
+  const jsonbQuery = { used: false };
   const query = tm(t, {
     ...r,
     dialect: e,
@@ -14318,8 +14320,9 @@ function ne(t, e = "postgres", n) {
     introspection: s.introspection,
     schema: s.schema,
     requestSchema: s.requestSchema,
+    jsonbQuery,
   });
-  if (e === "sqlite") {
+  if (jsonbQuery.used) {
     try {
       assertJsonbQueryLimits(query.compile());
     } catch (error) {
@@ -14341,7 +14344,9 @@ function throwJsonbError(error) {
 }
 function tryJsonbContainment(...args) {
   try {
-    return compileJsonbContainment(...args);
+    const predicate = compileJsonbContainment(...args);
+    if (predicate) args[3].jsonbQuery.used = true;
+    return predicate;
   } catch (error) {
     throwJsonbError(error);
   }
