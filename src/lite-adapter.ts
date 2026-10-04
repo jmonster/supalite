@@ -32,13 +32,18 @@ interface Column {
   schema?: string;
   pg_type?: string;
   type: string;
+  is_generated?: boolean;
 }
 interface Context {
   dialect: string;
   currentTable?: string;
   currentTableAlias?: string;
   currentSchema?: string;
-  introspection?: { default_schema?: string; columns?: Column[] };
+  introspection?: {
+    default_schema?: string;
+    columns?: Column[];
+    tables?: Array<{ name: string; schema?: string; type: string; sql?: string }>;
+  };
 }
 interface Resolvers {
   parsePath: (column: string) => {
@@ -147,6 +152,13 @@ export function tryJsonbContainment(
     input,
     filter,
     operator === "$contains" ? "contains" : "containedBy",
+    {
+      storedColumn: path.parts.length === 0 && info?.is_generated === false &&
+        context.introspection?.tables?.some((table) =>
+          table.name === info.table && table.type === "table" &&
+          /^\s*CREATE\s+TABLE\b/i.test(table.sql ?? "") &&
+          (table.schema || "public") === (info.schema || "public")) === true,
+    },
   );
 }
 

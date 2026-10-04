@@ -25,7 +25,7 @@ The schema-specific reference knows the fixture's types and field layout. It is 
 
 ## Implementation tradeoffs
 
-The object-only fast path uses bound JSON paths, explicit ancestor/type checks, and binary string comparison. It preserves missing-key, JSON-null, and SQL-null distinctions. A second, bounded `json_each` specialization handles shapes up to filter depth three, including arrays and arbitrary member names. Deeper patterns use the general compiler. Every SQL timing row records which plan actually ran; the fast shallow-array numbers must not be presented as general-plan timings.
+The object-only fast path uses bound guard paths, explicit ancestor/type checks, and binary string comparison. Verified stored-column inputs can expose top-level string/number equalities to matching `column ->> 'member'` expression indexes; the [eligibility rules](design-and-porting.md#specialized-object-containment) exclude computed or unknown sources. It preserves missing-key, JSON-null, and SQL-null distinctions. A second, bounded `json_each` specialization handles shapes up to filter depth three, including arrays and arbitrary member names. Deeper patterns use the general compiler. Every SQL timing row records which plan actually ran; the fast shallow-array numbers must not be presented as general-plan timings.
 
 The general plan uses JSON1 traversal and bottom-up containment match sets. It preserves array-element grouping and supports nested objects and arrays in both directions. Runtime traversal only needs the filter's maximum structural depth plus one; the extra level witnesses disallowed children beneath expected empty containers. Complete node identities and compact ancestor metadata avoid repeatedly joining every matching child back across all document nodes.
 
@@ -33,43 +33,21 @@ These are compatibility filters, not a replacement for PostgreSQL GIN indexes. W
 
 The compiler deliberately bounds filter depth, node count, and parameters. The adapter also checks the complete request's SQL and parameter budgets. Arbitrary-precision PostgreSQL numeric behavior and raw duplicate-object-label canonicalization are not covered by these benchmarks.
 
-## Recorded run
+## Stored-column index measurements
 
-Recorded on **2026-10-03, 14:56:23–14:56:48 UTC**. All **88 benchmark cases completed with verified counts in 25.02 seconds**, within the default supervisor budget.
+On **2026-10-04**, the stored-column implementation was compared with commit `46d75c1`, using Node 24.19.0, SQLite 3.53.3 and local libSQL/SQLite 3.45.1 on a shared Linux x64 host. Both variants had the same ordinary migrated index: `CREATE INDEX docs_status_idx ON docs ((body->>'status'));`. Of 50,000 documents, 50 contained `{status: 'open'}`. The old predicate scanned; the new predicate used `SEARCH ... USING INDEX`. Three warmups preceded 11 measured samples with alternating variant order; every result count and sorted ID checksum was checked.
 
-Environment: Node **24.19.0**, Linux x64 shared container, Intel Xeon Platinum 8573C, nine available processors. SQLite versions were **3.53.3** through Node and **3.45.1** through libSQL. This remains a shared-host measurement; ordinary scheduling and garbage-collection variation are not eliminated.
+| Selective indexed read | Previous ms | New ms |
+| --- | ---: | ---: |
+| Node prepared SQL | 40.933 | 0.237 |
+| Node whole SDK request | 41.128 | 1.376 |
+| Local libSQL execute | 49.775 | 0.367 |
+| Local libSQL whole SDK request | 51.212 | 1.301 |
 
-### Ten-thousand-row catalog
+The SQL was captured from actual SDK requests and replayed without rewriting; SDK timings include in-process request, compilation, database, serialization and parsing work, with no network. Unindexed selective SDK requests improved from 41.118 to 24.103 ms on Node and 51.128 to 31.294 ms on libSQL in this fixture. All-match row requests were approximately unchanged and chose scans. Those row requests retain Lite's 1,000-row cap; separate unrestricted counts verified all 50,000 matches. Indexed all-match SDK head/exact-count requests took 42.926→41.616 ms and 52.498→49.624 ms respectively, including both the capped row query and count. Small broad-query differences are not promised speedups.
 
-Each query matched exactly 1,000 documents. Values below are warm medians in milliseconds; request and SQL columns have the different scopes explained above.
+The optional index occupied **704 KiB**, about **14.42 bytes/document** or 4.2% of table pages. In separate 5,000-row local-driver transactions, indexed insert/update medians were 67%/117% higher on Node and 18%/23% higher on libSQL. These measure index-maintenance cost, not added compiler write work; no disk durability, network or concurrent workloads were measured. The compiler creates no index and adds no dependency. Its metadata gate uses existing introspection without a database call; an auxiliary compile-only comparison added about 5 μs for a synthetic 1,000-table schema with the target last, and approximately zero for small/target-first contexts.
 
-| Query | Node request | libSQL request | Node compiler SQL | libSQL compiler SQL |
-| --- | ---: | ---: | ---: | ---: |
-| Shipped shallow object | 6.66 | 7.08 | — | — |
-| Patched shallow object | 19.88 | 13.71 | 5.28 | 6.59 |
-| Patched nested object | 31.42 | 20.91 | 15.37 | 8.30 |
-| Patched same-variant array | 89.62 | 123.47 | 41.27 | 42.71 |
+These results support a narrow improvement for an existing, matching index on a selective top-level member. They do not establish universal performance gains. `npm test` includes the reproducible SDK/migration/EXPLAIN regression in `test/indexed-object.test.mjs`, both indexed and unindexed, plus live PostgreSQL semantic comparisons; timings are observations, not test thresholds.
 
-The correctness checks are not free: the already-working shallow request remains slower than the shipped implementation in this snapshot. The feature is a compatibility improvement, not a universal speedup.
-
-Handwritten, schema-specific SQL reference medians were 3.17/4.61 ms for shallow objects, 4.47/5.50 ms for nested objects, and 20.18/21.65 ms for same-variant matching, respectively Node/libSQL. The same-variant compiler SQL costs approximately **4.13/4.27 microseconds per candidate row** in this dataset.
-
-| Compiled count query | Selected plan | SQL bytes | Parameters |
-| --- | --- | ---: | ---: |
-| Shallow object | Object paths | 424 | 4 |
-| Nested object | Object paths | 485 | 5 |
-| Same variant | Bounded shallow | 1,409 | 6 |
-
-These counts include the fixture's `id <= ?` row-limit predicate. Compilation and Node preparation times are reported separately in the JSON output.
-
-### Wide and deep boundaries
-
-The shallow and general plans are deliberately measured separately. At 5,000 elements, shallow object-array probes remained in the low single-digit millisecond range. A depth-four pattern forcing the **general plan** over 5,000 nested objects took **612.60/783.65 ms for contains** and **1,264.88/1,550.95 ms for containedBy**, respectively Node/libSQL. These general-plan costs remain significant; do not extrapolate shallow-array timings to arbitrary nested data.
-
-Actual one-row depth-16 probes completed in 0.02–8.30 ms depending on engine, direction, and selected plan. A shallow comparison forcing the general plan with an additional 128-level irrelevant stored branch completed in 0.37–1.83 ms. These cases verify bounded behavior and pruning; they do not establish whole-table or production capacity.
-
-The measured emitted-core SHA-256 is `63df1023a97c75d6f04c18729844d88a05e8aff82d85e7a07da9c4f2e2b71fa7`. The three emitted modules totaled **17,261 bytes**, or **4,657 bytes gzipped**. The fingerprint and sizes apply to this build.
-
-Code-size numbers concatenate the unminified emitted `jsonb-*.js` modules and gzip that buffer. They exclude the adapter, Kysely, database engines, and all package dependencies; they are not an installed package size or a browser bundle claim.
-
-This local benchmark does not establish hosted D1, Bun, browser-WASM, production-network, or production-concurrency performance. Three warm runs are useful regression evidence, not a statistical capacity study.
+Exact baseline/candidate source SHA-256 identities, captured SQL/bindings/plans, verified counts, raw samples and index/write measurements are in the [compact measurement record](indexed-object-measurements.json). This record preserves the observed timings; the committed SDK test reproduces correctness and plans, not the numerical timing collection.

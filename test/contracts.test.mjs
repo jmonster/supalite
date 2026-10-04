@@ -113,7 +113,7 @@ for (const backend of ["node", "libsql"]) {
         ],
       ];
       const largeObject = Object.fromEntries(
-        Array.from({ length: 21 }, (_, index) => [`field${index}`, index]),
+        Array.from({ length: 26 }, (_, index) => [`field${index}`, index]),
       );
       const aggregate = await from()
         .contains("body", largeObject)

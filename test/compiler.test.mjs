@@ -49,6 +49,8 @@ for (const backend of ["node", "libsql"]) {
           ).rows[0];
     let comparisons = 0;
     try {
+      await run({ sql: "create table oracle_docs(document text)", parameters: [] });
+      await run({ sql: "insert into oracle_docs values (null)", parameters: [] });
       const cases = [...namedCases, ...crossCases, ...generatedCases()].filter(
         (entry) => entry.category !== "fidelity" && entry.rhs !== null,
       );
@@ -69,6 +71,20 @@ for (const backend of ["node", "libsql"]) {
           );
           comparisons++;
         }
+        // Also exercise source-column specialization, rather than only the
+        // bound-input form above (which must retain single evaluation).
+        const columnPredicate = jsonbContainment(
+          sql.ref("document"), JSON.parse(entry.rhs), "contains", { storedColumn: true },
+        );
+        await run({ sql: "update oracle_docs set document = ?", parameters: [entry.lhs] });
+        const columnQuery = sql`select ${columnPredicate} as matched,
+          not ${columnPredicate} as negated, (${columnPredicate} or 0) as ored
+          from oracle_docs`.compile(compiler);
+        const columnResult = await run(columnQuery);
+        assert.equal(value(columnResult.matched), expected.contains, `${entry.name} column`);
+        assert.equal(value(columnResult.negated), expected.contains === null ? null : !expected.contains, `${entry.name} column NOT`);
+        assert.equal(value(columnResult.ored), expected.contains, `${entry.name} column OR`);
+        comparisons += 3;
       }
       console.log(
         `${backend}: ${comparisons} live PostgreSQL comparisons passed`,

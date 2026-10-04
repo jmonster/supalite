@@ -7,7 +7,7 @@ The compiler translates constant JSONB containment filters into SQLite JSON1 pre
 PostgREST `cs` and `cd` map to PostgreSQL JSONB `@>` and `<@`. The compiler accepts a SQL expression for the stored document and one constant JSON filter:
 
 ```ts
-jsonbContainment(input, filter, 'contains' | 'containedBy', limits?)
+jsonbContainment(input, filter, 'contains' | 'containedBy', options?)
 ```
 
 It returns a Kysely `RawBuilder<boolean | null>` to compose with the existing query. It does not load rows into JavaScript or register a database function.
@@ -32,13 +32,19 @@ After validation, dispatch tries the object-only `contains` specialization, then
 
 ### Validate before emitting SQL
 
-An iterative pass validates the constant filter and checks its complexity. It rejects invalid values before query execution, including when the target table is empty. Keys and scalar values are bound parameters; generated aliases, JSON type names, and traversal metadata are internal SQL constants.
+An iterative pass validates the constant filter and checks its complexity. It rejects invalid values before query execution, including when the target table is empty. Scalar values and general keys/paths are bound parameters. The index specialization below emits only allowlisted top-level member names as SQL literals; generated aliases, JSON type names, and traversal metadata are internal SQL constants.
 
 ### Specialized object containment
 
 `jsonb-object-fast-path.ts` handles `contains` patterns consisting only of objects and scalar values, with keys matching `[A-Za-z_][A-Za-z0-9_]*`. It emits bound JSON paths, guards every object ancestor, and compares each scalar with its JSON type intact.
 
 Unsupported shapes return to the caller before consuming parameter budget. Punctuation-bearing keys remain supported by the other plans. A missing path is a false match; a SQL-null input remains NULL. This specialization avoids the general walk for a common filter shape without changing the semantic contract.
+
+For a verified stored source column, top-level string/number comparisons are hoisted outside the guarded scalar query as `(column ->> 'member') COLLATE BINARY = ?`. This matches ordinary SQLite expression indexes produced by Lite's imperative PostgreSQL-DDL translation, for example `CREATE INDEX docs_status_idx ON docs ((body->>'status'));`. Values remain bound and the original comparison is removed, so `{status: 'open'}` uses two bindings rather than three. Ancestor/type checks and the SQL-NULL guard remain in place, including under `NOT` and `OR`.
+
+The adapter requires metadata for an ordinary table and a non-generated column. Views, virtual tables and unknown metadata decline hoisting: a plain reference alone can hide a volatile computed value. The core defaults to the original plan; direct callers may pass `{storedColumn: true}` alongside limit overrides only when they guarantee that provenance. The compiler additionally checks that the input AST is a plain column reference.
+
+Computed inputs, extracted JSON paths, nested member comparisons, arrays and arbitrary keys retain their existing plans. This does not create indexes, change the declarative schema differ, or support PostgreSQL GIN indexes. The expression and collation must match an existing index; casted or differently spelled extraction indexes are not promised. Indexes add storage and write cost, and broad or unindexed queries can still scan.
 
 ### Bounded shallow containment
 

@@ -16,6 +16,10 @@ export interface CompileLimits {
   maxNodes: number;
   maxParameters: number;
 }
+export interface CompileOptions extends Partial<CompileLimits> {
+  /** Caller guarantees a stored, non-generated source column, not a view. */
+  storedColumn?: boolean;
+}
 export const DEFAULT_LIMITS: Readonly<CompileLimits> = Object.freeze({
   maxDepth: 16,
   maxNodes: 128,
@@ -130,8 +134,9 @@ export function jsonbContainment(
   input: Expression<unknown>,
   filter: Json,
   direction: Containment,
-  overrides: Partial<CompileLimits> = {},
+  options: CompileOptions = {},
 ): RawBuilder<boolean | null> {
+  const { storedColumn = false, ...overrides } = options;
   const limits = { ...DEFAULT_LIMITS, ...overrides };
   const filterDepth = validate(filter, limits);
   let aliases = 0;
@@ -145,7 +150,7 @@ export function jsonbContainment(
     return sql`${value}`;
   };
   if (direction === "contains") {
-    const fast = jsonbObjectFastPath(input, filter, parameter);
+    const fast = jsonbObjectFastPath(input, filter, parameter, storedColumn);
     if (fast) return fast;
   }
   const shallow = jsonbShallow(input, filter, direction, parameter);
