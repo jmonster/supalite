@@ -1,6 +1,23 @@
 # Supalite
 
-An editable baseline of the published `@supabase/lite` **0.11.0** package. Main retains the original package's functionality; feature changes remain on their respective branches until merged.
+An editable `@supabase/lite` **0.11.0** implementation with repeated-column filters preserved as conjunctions.
+
+## Repeated filters
+
+Both exclusions apply in this request:
+
+```js
+const result = await client
+  .from('items')
+  .select('id,name')
+  .neq('category', 'fruit')
+  .neq('category', 'vegetable')
+  .order('id')
+```
+
+The original parser overwrote the first `neq` filter. The checked-in parser now retains both conditions, including repeated negated filters and composition with existing `and` groups. The change applies to Node SQLite, libSQL, and PGlite requests.
+
+[`upstream/lite-0.11.0/dist/index.js`](upstream/lite-0.11.0/dist/index.js) contains the two direct parser edits. [`upstream/lite-0.11.0/dist/query/merge-filters.js`](upstream/lite-0.11.0/dist/query/merge-filters.js) is a separately maintained helper that preserves repeated operators as conjunction terms and treats column names as own data properties. The helper is checked in with the package, so no build or preparation step is needed.
 
 ## Package
 
@@ -26,7 +43,7 @@ import { App } from "../upstream/lite-0.11.0/dist/index.js";
 
 `test/helpers/lite.mjs` supplies the shared SQLite, libSQL, and PGlite SDK harness. The pinned npm `@supabase/lite@0.11.0` dev dependency is available for explicit original-version comparisons.
 
-Tests cover SDK insert, select, equality-filter, exact-count operations, export targets, and normal CLI behavior. They do not establish comprehensive compatibility.
+The repeated-filter suite covers equality, inequality, `in`, negation, SQL arrays, explicit logical groups, parameter order, chained Supabase-js calls, and unusual column names on all three adapters. Tests also cover SDK insert, select, exact-count operations, export targets, and normal CLI behavior. They do not establish comprehensive compatibility.
 
 ## License
 

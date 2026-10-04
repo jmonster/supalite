@@ -1,3 +1,4 @@
+import { mergeFilter } from "./query/merge-filters.js";
 import * as _t from "jsonv-ts";
 import { s } from "jsonv-ts";
 import { Deparser, QuoteUtils } from "pgsql-deparser";
@@ -9812,7 +9813,10 @@ function Tl(t, e, n) {
     }
     let s = e.map((o) => Bd(o)),
       i = s.length === 1 ? s[0] : s.flat();
-    n[`$${t}`] = i;
+    n[`$${t}`] =
+      t === "and" && Object.hasOwn(n, "$and") && Array.isArray(n.$and)
+        ? [...n.$and, ...i]
+        : i;
     return;
   }
   if (t === "not.or" || t === "not.and") {
@@ -9826,7 +9830,7 @@ function Tl(t, e, n) {
   Hd(r);
   for (let s of e) {
     let i = Rl(s);
-    n[r] ? Object.assign(n[r], i) : (n[r] = i);
+    mergeFilter(n, r, i);
   }
 }
 function _S(t, e, n) {
