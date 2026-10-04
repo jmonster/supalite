@@ -1709,7 +1709,7 @@ var J = class extends x {
       }
       return { rows: (await this.driver.exec(e))[0].rows };
     } catch (s) {
-      throw (console.error(s), new Error(`Failed to execute query: ${e}`));
+      throw (console.error(s), new Error(`Failed to execute query: ${e}`, { cause: s }));
     }
   }
   async close() {

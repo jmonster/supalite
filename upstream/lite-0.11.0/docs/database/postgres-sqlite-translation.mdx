@@ -91,7 +91,7 @@ Known issue: a bare operator expression such as `DEFAULT 1 + 1` translates witho
 
 **Not honored**: fails with `Function call "<name>" not supported`:
 
-- `auth.uid()`, `auth.role()`, `auth.email()`, `auth.jwt()`: these read JWT claims and have no SQLite equivalent as a column default. (They *do* work inside RLS `USING`/`WITH CHECK`, where they're rewritten on the AST instead of evaluated as a scalar default; see [Row Level Security](/database/rls).)
+- `auth.role()`, `auth.email()`, and `auth.jwt()` remain unsupported as column defaults. The exact `auth.uid()` exception below is resolved by the Data API.
 - `currval(...)`, and a bare `SELECT nextval(...)` statement.
 - `clock_timestamp()`, `statement_timestamp()`, `transaction_timestamp()`, `txid_current()`, and other volatile catalog functions.
 - Any user-defined function, or any function not in the allow-list above.
@@ -101,18 +101,9 @@ Known issue: a bare operator expression such as `DEFAULT 1 + 1` translates witho
 - `CREATE SEQUENCE` and `ALTER SEQUENCE ... OWNED BY` emit no SQLite DDL. Sequences aren't modeled on SQLite.
 - `DEFAULT nextval('seq')` on a `serial` or identity primary key becomes `INTEGER PRIMARY KEY AUTOINCREMENT`. On any other column the default is removed, so a `NOT NULL` column fails on the next insert that doesn't supply a value.
 
-**Workaround for `default auth.uid()`:** drop the default, pass `user_id` from the client on insert, and enforce ownership with a `WITH CHECK` policy instead:
+**Request-specific `DEFAULT auth.uid()`:** exact, zero-argument defaults translate to physical `DEFAULT NULL` plus translation metadata. Data API inserts/upserts resolve omitted columns from the verified request UID before RLS checks. Explicit values/null are preserved. Mixed bulk payloads use `Prefer: missing=default` (`defaultToNull: false`) for omitted fields in the request's column list.
 
-```sql
--- Instead of:
-user_id uuid not null default auth.uid() references auth.users (id),
-
--- Use:
-user_id uuid not null references auth.users (id),
--- and rely on a WITH CHECK policy to bind the row to the caller.
-```
-
-This limitation is SQLite-only. On PGlite/Postgres, `auth.uid()` works as a column default natively: the function is bootstrapped as part of connection setup.
+This is not a database-wide SQLite function: direct SQL, triggers, and view-mediated writes use NULL; PUT/PATCH missing-default expansion and composed auth expressions are not emulated. Preserve translation metadata and keep an ownership `WITH CHECK` policy. See [Row Level Security](/database/rls). PGlite/Postgres retain native defaults.
 
 ## CHECK constraint functions
 

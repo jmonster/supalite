@@ -3,6 +3,7 @@ import * as le from "node:path";
 import le__default from "node:path";
 import Bs from "node:os";
 import Mt from "node:fs";
+import { Readable, Writable } from "node:stream";
 import { createClient } from "@supabase/supabase-js";
 import {
   ensureVar,
@@ -5163,7 +5164,9 @@ var Jt = class {
       if (o.mtime <= u)
         return { httpStatusCode: 304, metadata: this.buildMetadata(o, a, n) };
     }
-    let c,
+    let c = Readable.toWeb((await W.open(s, "r")).createReadStream(), {
+        strategy: { highWaterMark: 65536, size: (chunk) => chunk.byteLength },
+      }),
       l,
       p = o.size,
       f = 200;
@@ -5174,10 +5177,9 @@ var Jt = class {
           d = u[2] ? Number.parseInt(u[2], 10) : o.size - 1;
         ((p = d - m + 1),
           (l = `bytes ${m}-${d}/${o.size}`),
-          (f = 206),
-          (c = (await W.open(s, "r")).readableWebStream()));
-      } else c = (await W.open(s, "r")).readableWebStream();
-    } else c = (await W.open(s, "r")).readableWebStream();
+          (f = 206));
+      }
+    }
     return {
       httpStatusCode: f,
       metadata: {
@@ -5188,32 +5190,59 @@ var Jt = class {
       body: c,
     };
   }
-  async uploadObject(e, n, r, i, s, o) {
-    let a = this.filePath(e, n);
-    await this.ensureDir(a);
-    let c;
-    if (i instanceof Uint8Array || Buffer.isBuffer(i)) c = i;
-    else {
-      let f = [],
-        u = i.getReader();
-      for (;;) {
-        let { done: m, value: d } = await u.read();
-        if (m) break;
-        f.push(d);
+  async uploadObject(bucket, key, version, body, contentType, cacheControl) {
+    const destination = this.filePath(bucket, key);
+    const staged = le.join(le.dirname(destination), `.upload-${randomUUID()}`);
+    const bytes = body instanceof Uint8Array || Buffer.isBuffer(body);
+    let file, writer;
+    try {
+      await this.ensureDir(destination);
+      const mode = await W.stat(destination).then(stats => stats.mode & 0o777, error => {
+        if (error.code !== "ENOENT") throw error;
+      });
+      file = await W.open(staged, "wx", mode);
+      if (mode !== undefined) await file.chmod(mode);
+      const hash = createHash("md5");
+      // Bound bytes and small/empty chunk entries, including on Bun.
+      writer = Writable.toWeb(file.createWriteStream({ highWaterMark: 256 * 1024 })).getWriter();
+      const sink = new WritableStream({
+        start(controller) { writer.closed.catch(error => controller.error(error)); },
+        write(chunk) {
+          if (chunk.byteLength === 0) return;
+          hash.update(chunk);
+          return writer.write(chunk);
+        },
+        close() { return writer.close(); },
+        abort(error) { return writer.abort(error); },
+      }, { highWaterMark: 256 * 1024, size: chunk => Math.max(chunk.byteLength, 65536) });
+      const source = bytes ? new ReadableStream({ start(controller) { controller.enqueue(body); controller.close(); } }) : body;
+      await source.pipeTo(sink);
+      await file.close();
+      const stats = await W.stat(staged);
+      const metadata = {
+        cacheControl,
+        contentLength: stats.size,
+        size: stats.size,
+        mimetype: contentType,
+        lastModified: stats.mtime,
+        eTag: `"${hash.digest("hex")}"`,
+      };
+      // Publish only complete, closed files; failed replacements keep the old bytes.
+      await W.rename(staged, destination);
+      return metadata;
+    } catch (error) {
+      if (writer) await writer.abort(error).catch(() => {});
+      if (!bytes && !body.locked) await body.cancel(error).catch(() => {});
+      if (file) {
+        const failures = [];
+        await file.close().catch(reason => failures.push(reason));
+        await W.unlink(staged).catch(reason => failures.push(reason));
+        if (failures.length) throw new AggregateError([error, ...failures], "Upload and staging cleanup failed");
       }
-      c = Buffer.concat(f);
+      throw error;
+    } finally {
+      writer?.releaseLock();
     }
-    await W.writeFile(a, c);
-    let l = await W.stat(a),
-      p = `"${createHash("md5").update(c).digest("hex")}"`;
-    return {
-      cacheControl: o,
-      contentLength: l.size,
-      size: l.size,
-      mimetype: s,
-      lastModified: l.mtime,
-      eTag: p,
-    };
   }
   async deleteObject(e, n, r) {
     let i = this.filePath(e, n);

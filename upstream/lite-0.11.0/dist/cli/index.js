@@ -1,5 +1,36 @@
 #!/usr/bin/env node
+import {
+  runUpgradeDryRun,
+  writeUpgradeDryRunReport,
+} from "./upgrade-dry-run.js";
+import {
+  NATIVE_CLI_VERSION, resolveLocalRuntime, nativeCommand, parseNativeStatus, assertNativeStopped,
+  requireFreshLocalDirectory, inspectFunctionUpgrade, copyFunctions, functionConfigToml, writeLocalCredentials,
+} from "./upgrade-local-runtime.js";
+import { normalizeSupabaseAuthUser } from "./upgrade-auth-users.js";
+import { isUpgradeMigrationMetadata } from "./upgrade-migration-metadata.js";
+import { formatBinaryValue } from "./upgrade-binary-value.js";
+import {
+  identityDefinition,
+  preserveUpgradeIdentities,
+  identityOverride,
+  upgradeSequenceReset,
+} from "./upgrade-identity.js";
+import {
+  isNodeSqlite,
+  upgradeRows,
+  beginReadSnapshot,
+  disposeUserData,
+  sqlBatches,
+} from "./sqlite-streaming.js";
+import {
+  inspectStorage, assertStorageUnchanged, storageInserts, storageShape,
+  assertStorageShape, assertStorageEmpty, storageState,
+  requireFreshStorageDirectory, waitForStorage, transferStorage,
+} from "./upgrade-storage.js";
+import { isAuthUidDefault } from "../auth-uid-defaults.js";
 import as, { statSync, readFileSync } from "node:fs";
+import { Readable, Writable } from "node:stream";
 import * as Fe from "node:path";
 import Fe__default, { join } from "node:path";
 import { parse } from "dotenv";
@@ -7,6 +38,7 @@ import * as he from "node:fs/promises";
 import he__default, { stat as stat$1 } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { createConnection } from "@supabase/lite/sqlite";
+import { prepareFunctions } from "../functions/runner.js";
 import { s } from "jsonv-ts";
 import vb from "node:os";
 import { createClient } from "@supabase/supabase-js";
@@ -18,6 +50,7 @@ import {
   isEqual,
   ensureVar,
   App,
+  getStorageSchemaSql,
   cloud,
 } from "@supabase/lite";
 import { sql } from "kysely";
@@ -4117,7 +4150,12 @@ async function js(e, t = {}) {
   }
   let n = ys(),
     r = t.port ?? 3e3,
-    s = t.host ?? "127.0.0.1";
+    s = t.host ?? "127.0.0.1",
+    draining = false;
+  const fetchRequest = (app, request, context) =>
+    draining && new URL(request.url).pathname === "/_system/ping"
+      ? new Response("Shutting down", { status: 503 })
+      : app.fetch(request, context);
   if (Hn()) {
     let i = await Promise.resolve()
         .then(() => (Jp(), Xp))
@@ -4127,16 +4165,23 @@ async function js(e, t = {}) {
       let a = Yp(e, n, i);
       o = Bun.serve({
         fetch: (l) =>
-          a.fetch(l, { peerAddress: o?.requestIP(l)?.address ?? null }),
+          fetchRequest(a, l, { peerAddress: o?.requestIP(l)?.address ?? null }),
         hostname: s,
         port: r,
       });
     } catch (a) {
       throw (pa(a) && fa(r), a);
     }
-    return async () => {
-      await o.stop();
-    };
+    let stopping;
+    return Object.assign((deadline = Date.now() + 5000) => stopping ??= (async () => {
+      // stop(false) alone can wait forever for an incomplete upload or stream.
+      const timer = setTimeout(() => {
+        console.warn("Shutdown grace expired; closing remaining HTTP connections");
+        void o.stop(true);
+      }, Math.max(0, deadline - Date.now()));
+      try { await o.stop(false); }
+      finally { clearTimeout(timer); }
+    })(), { beginShutdown: () => { draining = true; } });
   } else {
     let { createAdaptorServer: i } = await import("@hono/node-server"),
       o = await import("@hono/node-server/serve-static").then(
@@ -4146,7 +4191,7 @@ async function js(e, t = {}) {
       l = i({
         fetch: (c, ...p) => {
           let u = p[0]?.incoming;
-          return a.fetch(c, { peerAddress: u?.socket?.remoteAddress ?? null });
+          return fetchRequest(a, c, { peerAddress: u?.socket?.remoteAddress ?? null });
         },
       });
     try {
@@ -4154,12 +4199,17 @@ async function js(e, t = {}) {
     } catch (c) {
       throw (pa(c) && fa(r), c);
     }
-    return () =>
-      new Promise((c) => {
-        l.close(() => {
-          c(void 0);
-        });
+    let stopping;
+    return Object.assign((deadline = Date.now() + 5000) => stopping ??= new Promise((c, reject) => {
+      const timer = setTimeout(() => {
+        console.warn("Shutdown grace expired; closing remaining HTTP connections");
+        l.closeAllConnections();
+      }, Math.max(0, deadline - Date.now()));
+      l.close(error => {
+        clearTimeout(timer);
+        if (error) reject(error); else c();
       });
+    }), { beginShutdown: () => { draining = true; } });
   }
 }
 function Yp(e, t, n) {
@@ -4410,7 +4460,9 @@ var Gs,
               metadata: this.buildMetadata(o, a, n),
             };
         }
-        let l,
+        let l = Readable.toWeb((await he.open(i, "r")).createReadStream(), {
+            strategy: { highWaterMark: 65536, size: (chunk) => chunk.byteLength },
+          }),
           c,
           p = o.size,
           u = 200;
@@ -4421,10 +4473,9 @@ var Gs,
               m = f[2] ? Number.parseInt(f[2], 10) : o.size - 1;
             ((p = m - h + 1),
               (c = `bytes ${h}-${m}/${o.size}`),
-              (u = 206),
-              (l = (await he.open(i, "r")).readableWebStream()));
-          } else l = (await he.open(i, "r")).readableWebStream();
-        } else l = (await he.open(i, "r")).readableWebStream();
+              (u = 206));
+          }
+        }
         return {
           httpStatusCode: u,
           metadata: {
@@ -4435,32 +4486,59 @@ var Gs,
           body: l,
         };
       }
-      async uploadObject(t, n, r, s, i, o) {
-        let a = this.filePath(t, n);
-        await this.ensureDir(a);
-        let l;
-        if (s instanceof Uint8Array || Buffer.isBuffer(s)) l = s;
-        else {
-          let u = [],
-            f = s.getReader();
-          for (;;) {
-            let { done: h, value: m } = await f.read();
-            if (h) break;
-            u.push(m);
+      async uploadObject(bucket, key, version, body, contentType, cacheControl) {
+        const destination = this.filePath(bucket, key);
+        const staged = Fe.join(Fe.dirname(destination), `.upload-${randomUUID()}`);
+        const bytes = body instanceof Uint8Array || Buffer.isBuffer(body);
+        let file, writer;
+        try {
+          await this.ensureDir(destination);
+          const mode = await he.stat(destination).then(stats => stats.mode & 0o777, error => {
+            if (error.code !== "ENOENT") throw error;
+          });
+          file = await he.open(staged, "wx", mode);
+          if (mode !== undefined) await file.chmod(mode);
+          const hash = createHash("md5");
+          // Bound bytes and small/empty chunk entries, including on Bun.
+          writer = Writable.toWeb(file.createWriteStream({ highWaterMark: 256 * 1024 })).getWriter();
+          const sink = new WritableStream({
+            start(controller) { writer.closed.catch(error => controller.error(error)); },
+            write(chunk) {
+              if (chunk.byteLength === 0) return;
+              hash.update(chunk);
+              return writer.write(chunk);
+            },
+            close() { return writer.close(); },
+            abort(error) { return writer.abort(error); },
+          }, { highWaterMark: 256 * 1024, size: chunk => Math.max(chunk.byteLength, 65536) });
+          const source = bytes ? new ReadableStream({ start(controller) { controller.enqueue(body); controller.close(); } }) : body;
+          await source.pipeTo(sink);
+          await file.close();
+          const stats = await he.stat(staged);
+          const metadata = {
+            cacheControl,
+            contentLength: stats.size,
+            size: stats.size,
+            mimetype: contentType,
+            lastModified: stats.mtime,
+            eTag: `"${hash.digest("hex")}"`,
+          };
+          // Publish only complete, closed files; failed replacements keep the old bytes.
+          await he.rename(staged, destination);
+          return metadata;
+        } catch (error) {
+          if (writer) await writer.abort(error).catch(() => {});
+          if (!bytes && !body.locked) await body.cancel(error).catch(() => {});
+          if (file) {
+            const failures = [];
+            await file.close().catch(reason => failures.push(reason));
+            await he.unlink(staged).catch(reason => failures.push(reason));
+            if (failures.length) throw new AggregateError([error, ...failures], "Upload and staging cleanup failed");
           }
-          l = Buffer.concat(u);
+          throw error;
+        } finally {
+          writer?.releaseLock();
         }
-        await he.writeFile(a, l);
-        let c = await he.stat(a),
-          p = `"${createHash("md5").update(l).digest("hex")}"`;
-        return {
-          cacheControl: o,
-          contentLength: c.size,
-          size: c.size,
-          mimetype: i,
-          lastModified: c.mtime,
-          eTag: p,
-        };
       }
       async deleteObject(t, n, r) {
         let s = this.filePath(t, n);
@@ -4849,12 +4927,21 @@ function zs(e) {
     n = async () => {
       if (!t) {
         t = true;
+        // A single absolute budget covers watchers, functions, HTTP and DB close.
+        // Reserve the final five seconds for forced worker/connection cleanup.
+        const deadline = Date.now() + 10000;
+        const timer = setTimeout(() => {
+          console.error("Shutdown did not complete within 10000ms; forcing process exit");
+          process.exit(1);
+        }, Math.max(0, deadline - Date.now()));
+        let code = 0;
         try {
-          await e();
+          await e(deadline - 5000);
         } catch (r) {
+          code = 1;
           He(r);
-        }
-        process.exit(0);
+        } finally { clearTimeout(timer); }
+        process.exit(code);
       }
     };
   (process.on("SIGINT", n), process.on("SIGTERM", n));
@@ -6067,6 +6154,7 @@ var mr,
                   process.exit(1);
                 }
                 let a = i.config.api?.port ?? fe.default_api_port,
+                  functions = await prepareFunctions(i, { configPath: t.config, host: r.host, port: a }),
                   l = await js(i, { port: a, host: r.host });
                 (Ys(r.host, a),
                   Xs(i.config),
@@ -6075,8 +6163,11 @@ var mr,
                 let c = os();
                 (c && console.log(mr.default.yellow(` \u26A0 ${c}`)),
                   await i.connection.ping(),
-                  zs(async () => {
-                    (await l(), await i.connection.close());
+                  zs(async (drainDeadline) => {
+                    l.beginShutdown();
+                    await functions?.close({ drainTimeoutMs: Math.max(0, drainDeadline - Date.now()) });
+                    await l(drainDeadline);
+                    await i.connection.close();
                   }));
               },
               (r) => {
@@ -10456,7 +10547,7 @@ function Ir(e, t, n) {
             column: h,
             pgTypeName: d,
             nullable: !L && !v,
-            defaultValue: null,
+            defaultValue: isAuthUidDefault(A?.Constraint?.raw_expr) ? "auth.uid()" : null,
             defaultFn: null,
             isPrimaryKey: v,
             isUnique: !!E,
@@ -10635,6 +10726,10 @@ function Ir(e, t, n) {
                 },
                 h.factoryExtra,
               );
+            continue;
+          }
+          if (f.subtype === "AT_ColumnDefault" && f.name) {
+            p(f.name, { defaultValue: isAuthUidDefault(f.def) ? "auth.uid()" : null });
             continue;
           }
           if (f.subtype === "AT_SetNotNull" && f.name) {
@@ -11854,7 +11949,8 @@ var qe,
                   o.hasEnabledSystemBaseSchema() &&
                     (await o.ensureSystemSchema());
                 (await Fl(o, { force: true }), console.log());
-                let c = await js(o, { port: a, host: r.host });
+                let functions = await prepareFunctions(o, { configPath: t.config, host: r.host, port: a }),
+                  c = await js(o, { port: a, host: r.host });
                 (Ys(r.host, a),
                   Xs(o.config),
                   Js(o.adminMode),
@@ -11865,9 +11961,45 @@ var qe,
                 let u = Gm(o, { translate: true, force: true }),
                   f = Fe__default.join(process.cwd(), "supabase", Xt(o)),
                   h,
+                  functionsReloadTimer,
+                  functionsReload = Promise.resolve(),
+                  functionsWatchPaths = functions?.watchPaths ?? [],
+                  functionsConfigPath = functions && Fe__default.resolve(await qn(t.config)),
+                  functionsConfigReloadable = /\.(toml|json)$/i.test(functionsConfigPath ?? ""),
+                  watching = true,
+                  containsPath = (directory, file) => file === directory || file.startsWith(directory + Fe__default.sep),
+                  isFunctionChange = (file) => functionsWatchPaths.some((path) => containsPath(path, file)),
                   m = setTimeout(() => {
-                    ((h = u_.watch(f, { ignoreInitial: true })),
+                    ((functionsWatchPaths = functions?.watchPaths ?? []),
+                      (h = u_.watch([f, ...functionsWatchPaths], { ignoreInitial: true })),
+                      h.on("all", (_event, file) => {
+                        if (!watching || !isFunctionChange(file)) return;
+                        if (file === functionsConfigPath && !functionsConfigReloadable) {
+                          console.log("[functions] Restart lite dev to reload executable configuration");
+                          return;
+                        }
+                        clearTimeout(functionsReloadTimer);
+                        functionsReloadTimer = setTimeout(() => {
+                          functionsReload = functionsReload.then(async () => {
+                            if (!watching) return;
+                            const config = functionsConfigReloadable ? ds(await wy(t.config)) : undefined;
+                            const next = config ? { functions: config.functions ?? {}, edge_runtime: config.edge_runtime ?? {} } : {};
+                            if (!o.isValidConfig(next)) throw new Error("Invalid Functions configuration");
+                            await functions.reload(next);
+                            if (!watching) return;
+                            const nextPaths = functions.watchPaths;
+                            const obsolete = functionsWatchPaths.filter((path) =>
+                              ![f, ...nextPaths].some((current) => containsPath(current, path)));
+                            await h.unwatch(obsolete);
+                            if (!watching) return;
+                            h.add(nextPaths);
+                            functionsWatchPaths = nextPaths;
+                            console.log("[functions] Reloaded function project");
+                          }).catch((error) => console.error("[functions] Reload failed:", error.message));
+                        }, 75);
+                      }),
                       h.on("add", async (d) => {
+                        if (!watching || isFunctionChange(d) || !containsPath(f, d)) return;
                         (console.log(),
                           console.log(qe.default.dim(`Migration added: ${d}`)));
                         try {
@@ -11888,10 +12020,16 @@ var qe,
                         }
                       }));
                   }, 200);
-                zs(async () => {
-                  (clearTimeout(m),
+                zs(async (drainDeadline) => {
+                  c.beginShutdown();
+                  const stopFunctions = functions?.close({ drainTimeoutMs: Math.max(0, drainDeadline - Date.now()) });
+                  (watching = false,
+                    clearTimeout(m),
+                    clearTimeout(functionsReloadTimer),
                     await Promise.all([u(), h?.close()]),
-                    await c(),
+                    await functionsReload,
+                    await stopFunctions,
+                    await c(drainDeadline),
                     await o.connection.close());
                 });
               },
@@ -14677,14 +14815,14 @@ var _x,
 function Rn(e) {
   return e instanceof Vi;
 }
-function Nd() {
+function Nd(flush = $n) {
   if (Pd) return;
   Pd = true;
   let e = process.exit.bind(process),
     t = false;
   process.exit = (n) => {
     let r = typeof n == "number" ? n : Number(process.exitCode ?? 0);
-    throw (t || ((t = true), $n(r !== 0).finally(() => e(r))), new Vi(r));
+    throw (t || ((t = true), flush(r !== 0).finally(() => e(r))), new Vi(r));
   };
 }
 var Vi,
@@ -15583,6 +15721,7 @@ var Vx,
         if (r === "CONSTR_NULL") return "NULL";
         if (r === "CONSTR_NOTNULL") return "NOT NULL";
         if (r === "CONSTR_DEFAULT" && t.raw_expr) {
+          if (isAuthUidDefault(t.raw_expr)) return "DEFAULT NULL";
           let s = this.unwrapConstCast(t.raw_expr),
             i = this.visit(s, n);
           return i.includes("(") && !i.startsWith("(")
@@ -16521,6 +16660,7 @@ var Vx,
       }
       extractDefaultValue(t) {
         if (!t.def) return null;
+        if (isAuthUidDefault(t.def)) return "NULL";
         let n = this.unwrapConstCast(t.def);
         if ("A_Const" in n) {
           let r = n.A_Const;
@@ -17675,8 +17815,7 @@ async function xh(e) {
     }
     let f = u.map((h) => `"${h.name}"`).join(", ");
     try {
-      let m = (await e.connection.exec(`SELECT ${f} FROM ${a}`))?.rows ?? [];
-      for (let d of m)
+      for await (let d of upgradeRows(e.connection, `SELECT ${f} FROM ${a}`))
         for (let g of u) {
           let y = d[g.name];
           if (Sh(g.type) && !dT(y)) {
@@ -17735,7 +17874,7 @@ async function to(e, t) {
     return 0;
   }
 }
-async function Ch(e, t) {
+async function Ch(e, t, options = {}) {
   let n = [],
     r = [],
     s = false;
@@ -17759,6 +17898,14 @@ async function Ch(e, t) {
     identities: 0,
     jwt_secret_set: !!e.config.auth?.jwt_secret,
   };
+  let storage = null;
+  if (s) {
+    try {
+      storage = await inspectStorage(e, { ...options, adapterClass: Gs });
+    } catch (error) {
+      n.push(String(error));
+    }
+  }
   return (
     s &&
       ((o.users = await to(e, "users")),
@@ -17769,8 +17916,6 @@ async function Ch(e, t) {
       r.push(
         "auth.jwt_secret is not configured \u2014 tokens will not survive upgrade",
       ),
-    e.config.storage?.enabled &&
-      r.push("Storage is enabled but migration is not yet supported"),
     e.config.realtime?.enabled &&
       r.push("Realtime config migration is not yet supported"),
     {
@@ -17782,6 +17927,7 @@ async function Ch(e, t) {
       schemaBytes: t.sql.length,
       tables: i,
       auth: o,
+      storage,
     }
   );
 }
@@ -18146,6 +18292,7 @@ async function ro(e, t = {}) {
     for (let f of l) {
       let h = { ...f };
       if (n === "supabase" && o === "users") {
+        h = normalizeSupabaseAuthUser(h);
         let y = h.confirmed_at;
         y != null && h.email_confirmed_at == null && (h.email_confirmed_at = y);
       }
@@ -18230,7 +18377,7 @@ async function CT(e) {
       SELECT table_schema, table_name, column_name, is_nullable, data_type,
              udt_name, udt_schema, character_maximum_length,
              numeric_precision, numeric_scale, column_default,
-             is_generated, generation_expression, ordinal_position
+             is_generated, generation_expression, ordinal_position, is_identity, identity_generation, identity_start, identity_increment, identity_minimum, identity_maximum, identity_cycle
       FROM information_schema.columns
       WHERE table_schema NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
       ORDER BY table_schema, table_name, ordinal_position
@@ -18294,9 +18441,11 @@ function $T(e, t) {
   return (
     n.push(RT(e)),
     e.is_nullable === "NO" && !t.includes(e.column_name) && n.push("NOT NULL"),
-    e.is_generated === "ALWAYS" && e.generation_expression
-      ? n.push(`GENERATED ALWAYS AS (${e.generation_expression}) STORED`)
-      : e.column_default !== null && n.push(`DEFAULT ${e.column_default}`),
+    e.is_identity === "YES"
+      ? n.push(identityDefinition(e))
+      : e.is_generated === "ALWAYS" && e.generation_expression
+        ? n.push(`GENERATED ALWAYS AS (${e.generation_expression}) STORED`)
+        : e.column_default !== null && n.push(`DEFAULT ${e.column_default}`),
     t.length === 1 && t[0] === e.column_name && n.push("PRIMARY KEY"),
     n.join(" ")
   );
@@ -18323,7 +18472,10 @@ var kh = b(() => {
 function io(e) {
   let t = so.get(e);
   if (t) return t;
-  let n = vh(e.sql, no()).then(async (r) => (await ah(r)).schema);
+  let n = vh(
+    e.sql,
+    no() + (/\bstorage\b/i.test(e.sql) ? getStorageSchemaSql() : ""),
+  ).then(async (r) => preserveUpgradeIdentities(await ah(r)));
   return (
     so.set(e, n),
     n.catch(() => {
@@ -18453,6 +18605,8 @@ function Oh(e, t) {
       s = n.includes("jsonb") ? "::jsonb" : "::json";
     return `${Pn(r)}${s}`;
   }
+  let binary = formatBinaryValue(e);
+  if (binary !== undefined) return binary;
   return e instanceof Date
     ? Pn(e.toISOString())
     : typeof e == "object"
@@ -18485,67 +18639,90 @@ function LT(e, t, n) {
   let r = `${lo(e)}.${lo(t)}`;
   return `SELECT setval(pg_get_serial_sequence(${Pn(r)}, ${Pn(n)}), COALESCE((SELECT MAX(${lo(n)}) FROM ${r}), 1));`;
 }
-async function co(e, t) {
-  let n = await e.connection.introspect(),
-    r = e.connection.dialect,
-    s = await io(t),
-    i = NT(
-      n.tables.filter((a) => !PT.has(ao(a.schema))),
-      n.foreign_keys,
-    ),
-    o = [];
-  for (let a of i) {
-    let l = ao(a.schema),
-      c =
-        r === "sqlite"
-          ? l === "public"
-            ? `"${a.name}"`
-            : `"${l}.${a.name}"`
-          : `"${l}"."${a.name}"`,
-      p = n.columns.filter((x) => x.table === a.name && ao(x.schema) === l),
-      u = s.get(Xr(l, a.name)),
-      f = p.filter((x) => {
-        let $ = u?.get(x.name);
-        return $ ? !$.context.isGenerated : !x.generated && !x.is_generated;
-      }),
-      h = [];
-    try {
-      h = (await e.connection.exec(`SELECT * FROM ${c}`))?.rows ?? [];
-    } catch {
-      continue;
-    }
-    if (h.length === 0) continue;
-    let m =
-      typeof e.connection.deserializeRow == "function"
-        ? e.connection.deserializeRow.bind(e.connection)
-        : (x) => x;
-    h = h.map((x) => {
-      let $ = u ? u.deserializeRow(x) : x;
-      return m($);
-    });
-    let d = f.map((x) => x.name),
-      g = new Map(
-        f.map((x) => {
-          let $ = u?.get(x.name);
-          return [x.name, $ ? Lh($) : (x.pg_type ?? x.type)];
-        }),
+async function co(e, t, upgradeOptions = {}) {
+  let snapshot = isNodeSqlite(e.connection)
+    ? beginReadSnapshot(e.connection, upgradeOptions)
+    : null;
+  try {
+    let n = await e.connection.introspect(),
+      r = e.connection.dialect,
+      s = await io(t),
+      i = NT(
+        n.tables.filter((a) => !PT.has(ao(a.schema)) && !isUpgradeMigrationMetadata(a)),
+        n.foreign_keys,
       ),
-      y = [];
-    for (let x of h) {
-      let $ = d.map((C) => Oh(x[C], g.get(C)));
-      y.push(
-        `INSERT INTO "${l}"."${a.name}" (${d.map((C) => `"${C}"`).join(", ")}) VALUES (${$.join(", ")}) ON CONFLICT DO NOTHING`,
-      );
+      o = [];
+    for (let a of i) {
+      let l = ao(a.schema),
+        c =
+          r === "sqlite"
+            ? l === "public"
+              ? `"${a.name}"`
+              : `"${l}.${a.name}"`
+            : `"${l}"."${a.name}"`,
+        p = n.columns.filter((x) => x.table === a.name && ao(x.schema) === l),
+        u = s.get(Xr(l, a.name)),
+        f = p.filter((x) => {
+          let $ = u?.get(x.name);
+          return $ ? !$.context.isGenerated : !x.generated && !x.is_generated;
+        }),
+        h = [];
+      try {
+        h = snapshot
+          ? snapshot.rows(`SELECT * FROM ${c}`)
+          : ((await e.connection.exec(`SELECT * FROM ${c}`))?.rows ?? []);
+      } catch (error) {
+        if (snapshot) throw error;
+        // WITH NO DATA materialized views are deliberately unscannable.
+        if (r === "postgres" && (error?.code ?? error?.cause?.code) === "55000") {
+          let view = await e.connection.exec(
+            `SELECT 1 FROM pg_catalog.pg_matviews WHERE schemaname = ${Pn(l)} AND matviewname = ${Pn(a.name)} AND NOT ispopulated`,
+          ).catch(() => null);
+          if (view?.rows?.length) continue;
+        }
+        throw new Error(`Failed to read ${lo(l)}.${lo(a.name)} during data export: ${String(error)}`, {
+          cause: error,
+        });
+      }
+      if (h.length === 0) continue;
+      let m =
+        typeof e.connection.deserializeRow == "function"
+          ? e.connection.deserializeRow.bind(e.connection)
+          : (x) => x;
+      let decodeRow = (x) => {
+        let $ = u ? u.deserializeRow(x) : x;
+        return m($);
+      };
+      if (!snapshot) h = h.map(decodeRow);
+      let d = f.map((x) => x.name),
+        g = new Map(
+          f.map((x) => {
+            let $ = u?.get(x.name);
+            return [x.name, $ ? Lh($) : (x.pg_type ?? x.type)];
+          }),
+        ),
+        generate = async function* () {
+          for await (let raw of h) {
+            let x = snapshot ? decodeRow(raw) : raw;
+            let $ = d.map((C) => Oh(x[C], g.get(C)));
+            yield `INSERT INTO "${l}"."${a.name}" (${d.map((C) => `"${C}"`).join(", ")})${identityOverride(f, u)} VALUES (${$.join(", ")}) ON CONFLICT DO NOTHING`;
+          }
+        },
+        y = snapshot ? snapshot.statements(h.length, generate) : [];
+      if (!snapshot) for await (let statement of generate()) y.push(statement);
+      let _ = f
+        .filter((x) => {
+          let $ = u?.get(x.name);
+          return $ ? $.context.isSerial : OT(x);
+        })
+        .map((x) => upgradeSequenceReset(l, a.name, x.name, u?.get(x.name), LT));
+      o.push({ schema: l, table: a.name, inserts: y, sequenceResets: _ });
     }
-    let _ = f
-      .filter((x) => {
-        let $ = u?.get(x.name);
-        return $ ? $.context.isSerial : OT(x);
-      })
-      .map((x) => LT(l, a.name, x.name));
-    o.push({ schema: l, table: a.name, inserts: y, sequenceResets: _ });
+    return snapshot ? snapshot.attach(o) : o;
+  } catch (error) {
+    await disposeUserData(snapshot, error);
+    throw error;
   }
-  return o;
 }
 var PT,
   Nh,
@@ -18576,7 +18753,7 @@ var PT,
         "serial2",
       ])));
   });
-async function Ih(e, t) {
+async function Ih(e, t, { storage } = {}) {
   let { PGlite: n } = await We(
       "@supabase/lite/pglite",
       "pglite",
@@ -18618,7 +18795,7 @@ async function Ih(e, t) {
           }
         );
       }
-    let p = zr(no());
+    let p = zr(no() + (storage || /\bstorage\b/i.test(t.sql) ? getStorageSchemaSql() : ""));
     i = p.length;
     for (let m = 0; m < p.length; m++)
       try {
@@ -18641,6 +18818,8 @@ async function Ih(e, t) {
           }
         );
       }
+    const storageBefore = storage
+      ? await storageShape((sql) => r.query(sql)) : null;
     o = t.statements.length;
     for (let m of t.statements)
       try {
@@ -18663,6 +18842,7 @@ async function Ih(e, t) {
           }
         );
       }
+    if (storage) await assertStorageShape((sql) => r.query(sql), storageBefore);
     let u = await ro(e, { target: "local" }),
       f = ["users", "sessions", "identities", "refresh_tokens"];
     for (let m of f) {
@@ -18681,33 +18861,55 @@ async function Ih(e, t) {
         }
       }
     }
-    let h = await co(e, t);
-    for (let m of h) {
-      for (let d = 0; d < m.inserts.length; d++) {
-        l++;
-        try {
-          await r.exec(m.inserts[d]);
-        } catch (g) {
-          s.push({
-            phase: "data",
-            label: `${m.schema}.${m.table} row ${d + 1}/${m.inserts.length}`,
-            statement: m.inserts[d],
-            error: String(g),
-          });
-        }
-      }
-      for (let d = 0; d < m.sequenceResets.length; d++)
-        try {
-          await r.exec(m.sequenceResets[d]);
-        } catch (g) {
-          s.push({
-            phase: "data",
-            label: `${m.schema}.${m.table} sequence reset ${d + 1}/${m.sequenceResets.length}`,
-            statement: m.sequenceResets[d],
-            error: String(g),
-          });
-        }
+    if (storage) {
+      await assertStorageShape((sql) => r.query(sql), storageBefore);
+      for (const sql of storageInserts(storage)) await r.exec(sql);
     }
+    const storageBeforeData = storage
+      ? await storageState((sql) => r.query(sql)) : null;
+    let h = await co(e, t);
+    let dataError;
+    try {
+      for (let m of h) {
+        let d = 0;
+        for await (let statement of m.inserts) {
+          l++;
+          d++;
+          try {
+            await r.exec(statement);
+          } catch (g) {
+            s.push({
+              phase: "data",
+              label: `${m.schema}.${m.table} row ${d}/${m.inserts.length}`,
+              statement,
+              error: String(g),
+            });
+          }
+        }
+        for (let d = 0; d < m.sequenceResets.length; d++)
+          try {
+            await r.exec(m.sequenceResets[d]);
+          } catch (g) {
+            s.push({
+              phase: "data",
+              label: `${m.schema}.${m.table} sequence reset ${d + 1}/${m.sequenceResets.length}`,
+              statement: m.sequenceResets[d],
+              error: String(g),
+            });
+          }
+      }
+    } catch (error) {
+      dataError = error;
+      throw error;
+    } finally {
+      await disposeUserData(h, dataError);
+    }
+    if (storage && (await storageState((sql) => r.query(sql))) !== storageBeforeData) {
+      throw new Error("Application-row import changed Storage records; this trigger/dependency is unsupported");
+    }
+  } catch (error) {
+    if (!storage) throw error;
+    s.push({ phase: "storage", label: "Storage rehearsal", statement: "", error: String(error) });
   } finally {
     await r.close().catch(() => {});
   }
@@ -18749,6 +18951,7 @@ function jh(e) {
       console.log(`    ${r}${t.table}: ${O.default.cyan(t.rowCount)} rows${n}`);
     }
   }
+  if (e.storage) console.log(`  storage: ${e.storage.buckets.length} buckets, ${e.storage.objects.length} objects, ${e.storage.objects.reduce((bytes, object) => bytes + object.size, 0)} bytes verified at source`);
   if (e.errors.length > 0) {
     console.log(O.default.red("Errors:"));
     for (let t of e.errors) console.log(`  ${O.default.red("\u2717")} ${t}`);
@@ -18941,10 +19144,27 @@ async function qT(e, t) {
         ? s.map((d) => `${Zt(d)} AS ${Zt(`id_${d}`)}`)
         : [`rowid AS ${Zt("id_rowid")}`]),
       `${Zt(t.column)} AS ${Zt("__lite_value")}`,
-    ].join(", "),
-    l;
+    ].join(", ");
+  let c = 0,
+    p = "pass",
+    u = 0,
+    f = null,
+    h,
+    m = [];
   try {
-    l = await e.connection.exec(`SELECT ${a} FROM ${r}`);
+    for await (let d of upgradeRows(e.connection, `SELECT ${a} FROM ${r}`)) {
+      c++;
+      let g = t.field.validateStorage(d.__lite_value);
+      if (
+        ((p = UT(p, g.status)),
+        g.status !== "pass" &&
+          (u++, (f ??= g.message), (h ??= g.action), m.length < DT))
+      ) {
+        let y = {};
+        for (let _ of i) y[_] = d[`id_${_}`];
+        m.push({ id: y, raw_value: d.__lite_value });
+      }
+    }
   } catch (d) {
     return {
       field: kc(t),
@@ -18957,29 +19177,11 @@ async function qT(e, t) {
         "Apply the declared schema to the local Supalite database, then rerun the dry-run audit before upgrading.",
     };
   }
-  let c = l?.rows ?? [],
-    p = "pass",
-    u = 0,
-    f = null,
-    h,
-    m = [];
-  for (let d of c) {
-    let g = t.field.validateStorage(d.__lite_value);
-    if (
-      ((p = UT(p, g.status)),
-      g.status !== "pass" &&
-        (u++, (f ??= g.message), (h ??= g.action), m.length < DT))
-    ) {
-      let y = {};
-      for (let _ of i) y[_] = d[`id_${_}`];
-      m.push({ id: y, raw_value: d.__lite_value });
-    }
-  }
   return {
     field: kc(t),
     pg_type: Nc(t.field),
     status: p,
-    rows_checked: c.length,
+    rows_checked: c,
     ...(u > 0 ? { affected_rows: u } : {}),
     message: f,
     ...(m.length > 0 ? { samples: m } : {}),
@@ -19057,9 +19259,12 @@ async function Kh(e, t, n = {}) {
       let p = r[c] ?? 1;
       if (l.length === 1 || p === 1) {
         for (let u of l) {
+          n.signal?.throwIfAborted();
           try {
             await e.runSql(u);
+            n.signal?.throwIfAborted();
           } catch (f) {
+            n.signal?.throwIfAborted();
             s.push({ statement: u, error: String(f) });
           }
           (i++, n.onProgress?.(i, o));
@@ -19069,9 +19274,13 @@ async function Kh(e, t, n = {}) {
       for (let u = 0; u < l.length; u += p) {
         let f = l.slice(u, u + p),
           h = HT(f);
+        n.signal?.throwIfAborted();
         try {
-          (await e.runSql(h), (i += f.length), n.onProgress?.(i, o));
-        } catch {
+          await e.runSql(h);
+          n.signal?.throwIfAborted();
+          ((i += f.length), n.onProgress?.(i, o));
+        } catch (error) {
+          n.signal?.throwIfAborted();
           await a(f, c + 1);
         }
       }
@@ -19084,10 +19293,14 @@ var Vh,
       /^(INSERT INTO [^(]+\([^)]+\)\s*VALUES\s*)(\(.*\))(\s*ON CONFLICT[\s\S]*)?$/i;
   });
 async function GT(e, t, n, r) {
+  r.signal?.throwIfAborted();
   r.onSql?.(t, n);
+  r.signal?.throwIfAborted();
   try {
     await e.runSql(t);
+    r.signal?.throwIfAborted();
   } catch (s) {
+    r.signal?.throwIfAborted();
     throw new Error(
       `Failed SQL (${n}): ${String(s)}
 ${t}`,
@@ -19096,12 +19309,30 @@ ${t}`,
   }
 }
 async function Nn(e, t, n, r, s = {}) {
+  r.signal?.throwIfAborted();
   if (n.length === 0) return;
   r.onBatchStart?.(t, n.length);
-  let i = await Kh(e, n, {
-    sizes: s.sizes ?? r.batchSizes,
-    onProgress: (o, a) => r.onBatchProgress?.(t, o, a),
-  });
+  let i = [];
+  if (Array.isArray(n)) {
+    i = await Kh(e, n, {
+      sizes: s.sizes ?? r.batchSizes,
+      signal: r.signal,
+      onProgress: (o, a) => r.onBatchProgress?.(t, o, a),
+    });
+  } else {
+    let done = 0;
+    for await (let batch of sqlBatches(n)) {
+      i.push(
+        ...(await Kh(e, batch, {
+          sizes: s.sizes ?? r.batchSizes,
+          signal: r.signal,
+          onProgress: (o) => r.onBatchProgress?.(t, done + o, n.length),
+        })),
+      );
+      done += batch.length;
+    }
+  }
+  r.signal?.throwIfAborted();
   if (i.length > 0)
     throw (
       r.onBatchFailure?.(t, i),
@@ -19109,7 +19340,36 @@ async function Nn(e, t, n, r, s = {}) {
     );
   r.onBatchEnd?.(t, n.length, s.unit ?? "rows");
 }
+export function createUpgradeSpinner() {
+  it();
+  let controller = new AbortController();
+  return Object.assign(
+    hc({
+      onCancel: () => {
+        controller.abort(new Error("Upgrade cancelled"));
+        process.exit(130);
+      },
+    }),
+    { signal: controller.signal },
+  );
+}
 async function Lc(e, t, n, r) {
+  r.signal?.throwIfAborted();
+  const storage = r.storage;
+  const storageQuery = async (sql) => {
+    r.signal?.throwIfAborted();
+    const result = await t.runSql(sql);
+    r.signal?.throwIfAborted();
+    return result;
+  };
+  let storageBefore;
+  if (storage) {
+    r.signal?.throwIfAborted();
+    await assertStorageUnchanged(e, storage);
+    await waitForStorage(t, 60000, r.signal);
+    await assertStorageEmpty(storageQuery);
+    storageBefore = await storageShape(storageQuery);
+  }
   r.onSchemaStart?.(n.statements.length);
   let s = 0;
   for (let c of n.files) {
@@ -19125,6 +19385,8 @@ async function Lc(e, t, n, r) {
       r.onSchemaProgress?.(s, n.statements.length));
   }
   r.onSchemaEnd?.(n.statements.length);
+  r.signal?.throwIfAborted();
+  if (storage) await assertStorageShape(storageQuery, storageBefore);
   let i = await ro(e, { target: r.authTarget ?? "supabase" }),
     o = {
       users: i.users.length,
@@ -19141,27 +19403,57 @@ async function Lc(e, t, n, r) {
         r.onSkip?.(
           `Skipped ${i.sessions.length} sessions and ${i.refresh_tokens.length} refresh tokens (existing tokens will be invalidated).`,
         ));
-  let a = await co(e, n),
-    l = a.filter((c) => c.inserts.length > 0);
-  l.length === 0 && r.onSkip?.("No user data rows to migrate.");
-  for (let c of l)
-    await Nn(t, `Migrating ${c.schema}.${c.table}`, c.inserts, r);
-  for (let c of l)
-    await Nn(
-      t,
-      `Resetting ${c.schema}.${c.table} sequences`,
-      c.sequenceResets,
-      r,
-      { sizes: [1], unit: "statements" },
-    );
-  if (r.syncAuthConfig !== false && t.updateAuthConfig) {
-    let c = Gh(e.config);
-    Object.keys(c).length > 0 &&
-      (r.onAuthConfigStart?.(),
-      await t.updateAuthConfig(c),
-      r.onAuthConfigEnd?.());
+  if (storage) {
+    await assertStorageShape(storageQuery, storageBefore);
+    r.onBatchStart?.("Migrating and verifying Storage", storage.objects.length);
   }
-  return { schemaStatements: n.statements.length, auth: o, dataTables: a };
+  const storageResult = storage ? await transferStorage(e, storage, t, r.signal) : null;
+  const storageBeforeData = storage
+    ? await storageState(storageQuery) : null;
+  if (storage) r.signal?.throwIfAborted();
+  if (storageResult) r.onBatchEnd?.("Migrated and verified Storage", storageResult.objects, "objects");
+  if (storage) r.signal?.throwIfAborted();
+  let a = await co(e, n, { signal: r.signal });
+  let dataError;
+  try {
+    let l = a.filter((c) => c.inserts.length > 0);
+    l.length === 0 && r.onSkip?.("No user data rows to migrate.");
+    for (let c of l)
+      await Nn(t, `Migrating ${c.schema}.${c.table}`, c.inserts, r);
+    await disposeUserData(a);
+    for (let c of l)
+      await Nn(
+        t,
+        `Resetting ${c.schema}.${c.table} sequences`,
+        c.sequenceResets,
+        r,
+        { sizes: [1], unit: "statements" },
+      );
+    if (r.syncAuthConfig !== false && t.updateAuthConfig) {
+      let c = Gh(e.config);
+      Object.keys(c).length > 0 &&
+        (r.signal?.throwIfAborted(),
+        r.onAuthConfigStart?.(),
+        r.signal?.throwIfAborted(),
+        await t.updateAuthConfig(c),
+        r.signal?.throwIfAborted(),
+        r.onAuthConfigEnd?.());
+    }
+    r.signal?.throwIfAborted();
+    if (storage && (await storageState(storageQuery)) !== storageBeforeData) {
+      throw new Error("Application-row import changed verified Storage records; the target is partial and the upgrade failed");
+    }
+    if (storage) r.signal?.throwIfAborted();
+    return {
+      schemaStatements: n.statements.length, auth: o, dataTables: a,
+      ...(storageResult ? { storage: storageResult } : {}),
+    };
+  } catch (error) {
+    dataError = error;
+    throw error;
+  } finally {
+    await disposeUserData(a, dataError);
+  }
 }
 var Xh = b(() => {
   Wh();
@@ -19254,7 +19546,7 @@ async function YT() {
   };
 }
 async function Yr(e, t = {}) {
-  let n = process.env.LITE_SUPABASE_CLI?.split(/\s+/).filter(Boolean) ?? KT,
+  let n = process.env.LITE_SUPABASE_CLI?.split(/\s+/).filter(Boolean) ?? (t.runtime === "native" ? ["bunx", "--bun", `supabase@${NATIVE_CLI_VERSION}`] : KT),
     { spawn: r } = await import("node:child_process").catch(() => {
       throw new Error(
         "Local Supabase upgrade requires a Node-compatible runtime",
@@ -19268,6 +19560,7 @@ async function Yr(e, t = {}) {
           ...process.env,
           SUPABASE_TELEMETRY_DISABLED: "1",
           DO_NOT_TRACK: "1",
+          ...(t.runtime === "native" ? { SUPABASE_EXPERIMENTAL_STACK: "1" } : {}),
         },
       }),
       c = [],
@@ -19353,33 +19646,41 @@ async function Zh(e) {
   let r = `${t}.bak`;
   return ((await Ic(r)) || (await he__default.writeFile(r, n, "utf-8")), r);
 }
-async function tC(e) {
+async function tC(e, runtime) {
   let t = Fe__default.join(e, "supabase", "config.toml");
   (await Ic(t)) ||
     (await he__default.mkdir(e, { recursive: true }),
-    await Yr(["init", "--workdir", e, "--yes"], { timeoutMs: 6e4 }));
+    await Yr(["init", "--workdir", e, "--yes"], { timeoutMs: 6e4, runtime }));
 }
-async function nC(e, t, n) {
+async function nC(e, t, n, storage, options = {}) {
   let r = Fe__default.join(e, "supabase", "config.toml"),
     s = ZT(await he__default.readFile(r, "utf-8"));
   ((s = s.replace(/^project_id\s*=.*$/m, `project_id = "${t}"`)),
     (s = le(s, "api", "port", String(n.api))),
     (s = le(s, "db", "port", String(n.db))),
     (s = le(s, "db", "shadow_port", String(n.shadow))),
-    (s = le(s, "db", "major_version", "15")),
+    (s = le(s, "db", "major_version", options.runtime === "native" ? "17" : "15")),
     (s = le(s, "db.seed", "enabled", "false")),
-    (s = le(s, "studio", "enabled", "true")),
+    (s = le(s, "studio", "enabled", String(options.runtime !== "native"))),
     (s = le(s, "studio", "port", String(n.studio))),
-    (s = le(s, "inbucket", "enabled", "false")),
-    (s = le(s, "inbucket", "port", String(n.inbucket))),
+    (s = le(s, options.runtime === "native" ? "local_smtp" : "inbucket", "enabled", "false")),
+    (s = le(s, options.runtime === "native" ? "local_smtp" : "inbucket", "port", String(n.inbucket))),
     (s = le(s, "realtime", "enabled", "false")),
-    (s = le(s, "storage", "enabled", "false")),
-    (s = le(s, "edge_runtime", "enabled", "false")),
+    (s = le(s, "storage", "enabled", String(!!storage))),
+    (s = le(s, "edge_runtime", "enabled", String(options.runtime === "native" && !!options.functions?.enabled))),
     (s = le(s, "edge_runtime", "inspector_port", String(n.edgeInspector))),
     (s = le(s, "analytics", "enabled", "false")),
     (s = le(s, "analytics", "port", String(n.analytics))),
     (s = le(s, "db.pooler", "enabled", "false")),
     (s = le(s, "db.pooler", "port", String(n.pooler))),
+    storage && (s = le(s, "storage", "file_size_limit", JSON.stringify(`${storage.globalLimit}B`))),
+    options.runtime === "native" && (
+      (s = le(s, "auth", "enabled", String(options.sourceConfig?.auth?.enabled !== false))),
+      options.functions && (
+        (s = le(s, "edge_runtime", "policy", JSON.stringify(options.functions.policy))),
+        (s += functionConfigToml(options.functions))
+      )
+    ),
     await he__default.writeFile(r, s, "utf-8"));
 }
 function eg(e) {
@@ -19450,11 +19751,12 @@ var KT,
         "supavisor",
       ]));
     uo = class e {
-      constructor(t, n, r, s) {
+      constructor(t, n, r, s, runtime = "legacy") {
         this.workdir = t;
         this.projectId = n;
         this.status = r;
         this.cleanupOnStop = s;
+        this.runtime = runtime;
       }
       stopped = false;
       static async start(t = {}) {
@@ -19465,24 +19767,47 @@ var KT,
             )),
           r = t.projectId ?? `lite-local-${Date.now().toString(36)}`,
           s = t.cleanupOnStop ?? !t.workdir,
-          i = await YT();
+          i = await YT(),
+          runtime = resolveLocalRuntime(t.runtime, "local");
+        if (runtime === "native") {
+          await requireFreshLocalDirectory(n, t.sourceDirectory ?? process.cwd());
+          const version = await Yr(["--version"], { runtime, timeoutMs: 6e4 });
+          if (version.stdout.trim() !== NATIVE_CLI_VERSION)
+            throw new Error(`Native local upgrade requires official Supabase CLI ${NATIVE_CLI_VERSION}. Set LITE_SUPABASE_CLI to that binary.`);
+        }
+        let nativeStartAttempted = false;
         try {
-          (await tC(n),
-            await nC(n, r, i),
-            await sC(n, t.sourceConfig),
-            await Yr(
-              ["start", "--workdir", n, "--yes", "--exclude", zT.join(",")],
-              { timeoutMs: 5 * 6e4 },
-            ));
-          let { stdout: o } = await Yr(
-            ["status", "--workdir", n, "-o", "json"],
-            { timeoutMs: 6e4 },
+          (await tC(n, runtime),
+            await nC(n, r, i, t.storage, { ...t, runtime }),
+            await sC(n, t.sourceConfig));
+          if (runtime === "native" && t.functions) await copyFunctions(t.functions, n);
+          nativeStartAttempted = runtime === "native";
+          await Yr(
+            runtime === "native" ? nativeCommand("start", n, { storage: !!t.storage, functions: !!t.functions?.enabled }) :
+              ["start", "--workdir", n, "--yes", "--exclude", zT.filter((service) => !t.storage || service !== "storage-api").join(",")],
+            { timeoutMs: 5 * 6e4, runtime },
           );
-          return new e(n, r, XT(o), s);
+          let { stdout: o } = await Yr(
+            runtime === "native" ? nativeCommand("status", n) : ["status", "--workdir", n, "-o", "json"],
+            { timeoutMs: 6e4, runtime },
+          );
+          return new e(n, r, runtime === "native" ? parseNativeStatus(o) : XT(o), s, runtime);
         } catch (o) {
+          if (runtime === "native") {
+            try {
+              if (nativeStartAttempted) {
+                const stopped = await Yr(nativeCommand("stop", n), { timeoutMs: 12e4, runtime });
+                assertNativeStopped(stopped.stdout);
+              }
+              if (s) await he__default.rm(n, { recursive: true, force: true });
+            } catch (cleanupError) {
+              throw new AggregateError([o, cleanupError], `Native local startup failed: ${o.message ?? o}. Cleanup was not confirmed: ${cleanupError.message ?? cleanupError}. Inspect the owned stack at ${n}.`);
+            }
+            throw o;
+          }
           throw (
             await Yr(["stop", "--workdir", n, "--no-backup"], {
-              timeoutMs: 12e4,
+              timeoutMs: 12e4, runtime,
             }).catch(() => {}),
             s &&
               (await he__default
@@ -19500,16 +19825,31 @@ var KT,
           ),
           r = n({ url: this.status.dbUrl });
         try {
-          await r.exec(t);
+          return await r.exec(t);
         } finally {
           await r.close();
         }
       }
       async stop() {
+        if (this.runtime === "native") {
+          if (this.stopped) {
+            if (this.cleanupOnStop) await he__default.rm(this.workdir, { recursive: true, force: true });
+            return;
+          }
+          if (this.stopPending) return this.stopPending;
+          this.stopPending = (async () => {
+            const result = await Yr(nativeCommand("stop", this.workdir), { timeoutMs: 12e4, runtime: "native" });
+            assertNativeStopped(result.stdout);
+            this.stopped = true;
+            if (this.cleanupOnStop) await he__default.rm(this.workdir, { recursive: true, force: true });
+          })();
+          try { await this.stopPending; } finally { this.stopPending = null; }
+          return;
+        }
         this.stopped ||
           ((this.stopped = true),
           await Yr(["stop", "--workdir", this.workdir, "--no-backup"], {
-            timeoutMs: 12e4,
+            timeoutMs: 12e4, runtime: this.runtime,
           }).catch(() => {}),
           this.cleanupOnStop &&
             (await he__default.rm(this.workdir, {
@@ -19779,6 +20119,8 @@ var Ce,
         .option("--project-name <name>", "Name for the new Supabase project")
         .option("--supabase-token <token>", "Supabase personal access token")
         .option("--local-dir <path>", "Supabase CLI workdir for --target local")
+        .option("--local-runtime <runtime>", "Local runtime: legacy (default) or native (official CLI 2.119.0)")
+        .option("--storage-quiescent", "Confirm source writers are stopped until Storage upgrade finishes", false)
         .option(
           "--migrate-sessions",
           "Transfer existing sessions, refresh tokens, and JWT secret so current tokens keep working",
@@ -19803,7 +20145,10 @@ var Ce,
           (n || console.log(),
             await X(async () => {
               await Y(t.config);
-              let s = ig(t.target);
+              let s = ig(t.target),
+                localRuntime = resolveLocalRuntime(t.localRuntime, s);
+              if (localRuntime === "native" && !t.localDir)
+                throw new Error("--local-runtime native requires --local-dir <new-or-empty-directory> outside the source project.");
               if (
                 (gc("upgrade.target", s),
                 gc("upgrade.dry_run", !!t.dryRun),
@@ -19827,15 +20172,41 @@ var Ce,
               } finally {
                 n && (console.log = r);
               }
+              let functions = null, sourceDirectory;
+              if (localRuntime === "native") {
+                try {
+                  const configPath = Fe__default.resolve(await qn(t.config));
+                  functions = await inspectFunctionUpgrade(i.config, configPath);
+                  sourceDirectory = Fe__default.basename(functions.directory) === "supabase" ? Fe__default.dirname(functions.directory) : functions.directory;
+                  await requireFreshLocalDirectory(t.localDir, sourceDirectory);
+                } catch (error) {
+                  if (!n) throw error;
+                  const report = await runUpgradeDryRun({ readiness: async () => { throw error; } });
+                  await writeUpgradeDryRunReport(report, process.stdout);
+                  process.exit(1);
+                  return;
+                }
+              }
               let o = await Ph(i);
               if (n) {
-                let R = await Oc(i, o);
-                (r(JSON.stringify(R, null, 2)),
-                  R.summary.upgrade_safe || process.exit(1));
+                let readiness;
+                let R = await runUpgradeDryRun({
+                  readiness: async () => (readiness = await Ch(i, o, { target: s, quiescent: t.storageQuiescent })),
+                  audit: () => Oc(i, o),
+                  rehearsal: () => Ih(i, o, { storage: readiness?.storage }),
+                });
+                if (readiness?.storage) {
+                  R.storage = { buckets: readiness.storage.buckets.length, objects: readiness.storage.objects.length, rehearsal: R.rehearsal };
+                }
+                if (functions) R.functions = { enabled: functions.enabled, names: Object.keys(functions.functions), files: functions.files.length, omitted: functions.omitted };
+                await writeUpgradeDryRunReport(R, process.stdout);
+                R.summary.upgrade_safe || process.exit(1);
                 return;
               }
+              if (functions?.omitted.length)
+                console.log(Ce.default.yellow(`Functions configuration/files not copied: ${functions.omitted.join(", ")}. Reconfigure required secrets at the destination.`));
               console.log(Ce.default.dim("Running readiness checks..."));
-              let a = await Wr("readiness", () => Ch(i, o));
+              let a = await Wr("readiness", () => Ch(i, o, { target: s, quiescent: t.storageQuiescent }));
               if ((jh(a), !a.ok))
                 throw new Error("Readiness checks failed. See errors above.");
               let l = async () => {
@@ -19843,7 +20214,7 @@ var Ce,
                   Ce.default.dim(`
 Rehearsing upgrade against in-memory pglite...`),
                 );
-                let R = await Wr("rehearsal", () => Ih(i, o));
+                let R = await Wr("rehearsal", () => Ih(i, o, { storage: a.storage }));
                 return (Fh(R), R.ok);
               };
               if (t.dryRun) {
@@ -19861,14 +20232,19 @@ Rehearsing upgrade against in-memory pglite...`),
                   throw new Error(
                     "--target local does not support preserving existing sessions yet. Re-run with --no-migrate-sessions.",
                   );
-                let R = Fe__default.resolve(t.localDir ?? Qh()),
-                  F = await Zh(R),
+                let R = Fe__default.resolve(t.localDir ?? Qh());
+                if (a.storage) {
+                  await requireFreshStorageDirectory(R, a.storage.root);
+                  await assertStorageUnchanged(i, a.storage);
+                }
+                if (localRuntime === "native") await requireFreshLocalDirectory(R, sourceDirectory);
+                let F = localRuntime === "native" ? null : await Zh(R),
                   j = null;
                 if (F) {
                   let H = Fe__default.relative(process.cwd(), F) || F;
                   j = `Your project's supabase/config.toml was rewritten in place for the local Supabase CLI. The original was backed up to ${H}. To resume supalite dev (bun run dev), restore it: cp ${H} supabase/config.toml (or git checkout supabase/config.toml). Pass --local-dir <separate-dir> next time to keep the local stack isolated.`;
                 }
-                let w = hc(),
+                let w = createUpgradeSpinner(),
                   S,
                   I;
                 try {
@@ -19877,6 +20253,10 @@ Rehearsing upgrade against in-memory pglite...`),
                       workdir: R,
                       cleanupOnStop: !1,
                       sourceConfig: i.config,
+                      storage: a.storage,
+                      runtime: localRuntime,
+                      sourceDirectory,
+                      functions,
                     })),
                     w.stop(`Local Supabase is running at ${S.status.apiUrl}`),
                     (I = await Wr("apply", () =>
@@ -19884,6 +20264,8 @@ Rehearsing upgrade against in-memory pglite...`),
                         migrateSessions: !1,
                         authTarget: "supabase",
                         syncAuthConfig: !1,
+                        signal: w.signal,
+                        storage: a.storage,
                         onSql: (H, ne) => {
                           t.verbose &&
                             console.log(
@@ -19929,9 +20311,13 @@ ${j}`),
                   "Sessions and JWT secret not migrated. Existing tokens are invalid \u2014 users must re-authenticate.",
                   "Management API auth config sync is skipped for --target local; supported local auth settings are written before Supabase starts.",
                 ];
+                if (functions) {
+                  D.push(`Functions preserved: ${Object.keys(functions.functions).length} configured, ${functions.files.length} source/config files. Runtime enabled: ${functions.enabled}. Verify Deno compatibility and reconfigure any required secrets.`);
+                  if (functions.omitted.length) D.push(`Functions files/settings omitted: ${functions.omitted.join(", ")}.`);
+                }
                 (j && D.unshift(j),
-                  i.config.storage?.enabled &&
-                    D.push("Storage migration is not yet supported."),
+                  I.storage &&
+                    D.push(`Storage verified: ${I.storage.buckets} buckets, ${I.storage.objects} objects, ${I.storage.bytes} bytes. Recreate signed URLs against the new endpoint; backend versions, ETags and update/access times regenerate.`),
                   i.config.realtime?.enabled &&
                     D.push("Realtime config migration is not yet supported."));
                 let K = Yh(S.status.dbUrl);
@@ -19939,6 +20325,7 @@ ${j}`),
                   let H = JSON.stringify(
                     {
                       target: "local",
+                      runtime: localRuntime,
                       workdir: S.workdir,
                       projectUrl: S.status.apiUrl,
                       apiUrl: S.status.apiUrl,
@@ -19946,12 +20333,13 @@ ${j}`),
                       dbUrl: S.status.dbUrl,
                       anonKey: S.status.anonKey,
                       serviceRoleKey: S.status.serviceRoleKey,
+                      ...(S.status.secretKey ? { secretKey: S.status.secretKey } : {}),
                       dbPassword: K,
                     },
                     null,
                     2,
                   );
-                  (await he__default.writeFile(t.dumpCredentials, H, "utf-8"),
+                  (await writeLocalCredentials(t.dumpCredentials, H),
                     console.log(
                       Ce.default.dim(
                         `Credentials written to ${t.dumpCredentials}`,
@@ -19990,7 +20378,7 @@ ${j}`),
                 }),
                 y = g.migrateSessions,
                 _ = pC(),
-                x = hc();
+                x = createUpgradeSpinner();
               x.start("Creating Supabase project");
               let $ = await u.createProject({
                   organization_id: f.id,
@@ -20042,6 +20430,7 @@ ${j}`),
                       {
                         migrateSessions: y,
                         authTarget: "supabase",
+                        signal: x.signal,
                         onSql: (R, F) => {
                           t.verbose &&
                             console.log(
@@ -20694,7 +21083,11 @@ Dh();
 Xh();
 Ah();
 Hh();
+ef();
+tg();
 export {
+  uo as LocalSupabaseTarget,
+  Gs as FileSystemStorageAdapter,
   Ph as collectUpgradeSource,
   co as exportUserData,
   ro as exportAuth,
@@ -20720,13 +21113,17 @@ function isCliEntry() {
     return false;
   }
 }
-if (isCliEntry()) {
+export function installCliProcessHandlers({ flush = $n } = {}) {
+  Nd(flush);
   process.on("unhandledRejection", (e) => {
     if (!Rn(e)) throw e;
   });
   process.on("uncaughtException", (e) => {
-    Rn(e) || (console.error(e), $n(true, e).finally(() => process.exit(1)));
+    Rn(e) || (console.error(e), flush(true, e).finally(() => process.exit(1)));
   });
+}
+if (isCliEntry()) {
+  installCliProcessHandlers();
   NC()
     .then(null)
     .catch(async (e) => {

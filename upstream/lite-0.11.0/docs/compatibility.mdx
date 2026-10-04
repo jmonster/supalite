@@ -86,21 +86,21 @@ RLS works across all backends but is enforced differently: SQLite rewrites the P
 | Permissive / restrictive policies, `FOR` command targeting, `TO role` | ✅ | ✅ | ✅ |
 | `auth.uid()` / `auth.jwt()` in policies | ✅ | ✅ | ✅ |
 | Subquery `WITH CHECK` on INSERT | ❌ | ✅ | ✅ |
-| `DEFAULT auth.uid()` on columns | ❌ | ✅ | ✅ |
+| `DEFAULT auth.uid()` on columns | Partial: Data API inserts/upserts only; see [RLS](/database/rls) | ✅ | ✅ |
 | Standalone `DROP POLICY` / `ALTER POLICY` | ✅ | ✅ | ✅ |
 
 See [Database: RLS](/database/rls) for the enforcement model and workarounds.
 
 ## Realtime and Edge Functions
 
-Both are planned but not started: config schemas exist, no runtime yet.
+Realtime is planned but not started. Run the existing Lite CLI under Bun 1.4.2+ for normal `dev` / `start` to execute default-export `{ fetch }` functions in native workers. Lite and the workers share one process. Portable app and function source can graduate unchanged to Supabase, with normal installed package dependencies locally and matching Supabase dependency configuration. The portable core also retains an advanced injected-executor interface.
 
 | Product | SQLite | PGlite | Postgres |
 |---|:---:|:---:|:---:|
 | Realtime | 🔄 | 🔄 | 🔄 |
-| Edge Functions | 🔄 | 🔄 | 🔄 |
+| Edge Functions | ⚠️ | ⚠️ | ⚠️ |
 
-See [Realtime](/other/realtime) and [Edge Functions](/other/edge-functions) for the planned design.
+The CLI discovers conventional function files and configured entrypoints. Bun loads TypeScript, relative shared modules, and packages installed through `package.json`; Lite adds no resolver, compiler, or runtime binary. Deno APIs, direct `npm:` / `jsr:` imports, and Deno import-map resolution are not supported locally. Gateway verification accepts recognized configured/resolved API keys or HS256 JWTs; functions own CORS and application authorization. Hosted deployment, Supabase-specific `EdgeRuntime` APIs, WebSocket upgrades, asymmetric JWT verification, regional routing, and hostile-code isolation remain outside this support. Direct PostgreSQL sockets and `SUPABASE_DB_URL` cannot target SQLite. See [Realtime](/other/realtime) and [Edge Functions](/other/edge-functions) for setup, lifecycle, and refresh limits.
 
 ## Legend
 

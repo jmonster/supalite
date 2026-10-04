@@ -35,6 +35,8 @@ pnpm add -g @supabase/lite
 
 Or install per-project and run it through your package manager's runner (`bunx lite <cmd>`, `npx lite <cmd>`, `pnpm exec lite <cmd>`).
 
+For automatic local Functions execution, run the CLI entrypoint explicitly with Bun 1.4.2+; a package runner may otherwise follow the Node shebang. Lite and native Bun workers share one process. Functions use a default-export `{ fetch }` handler and normal installed packages. Follow the [Bun setup and portable SDK example](/other/edge-functions). Automatic workers are not enabled in Node or Deno hosts.
+
 ## Parity table
 
 | Command | lite | supabase | Notes |
@@ -75,7 +77,7 @@ Or install per-project and run it through your package manager's runner (`bunx l
 | `cloud diff` | Experimental (lite-only) | No | Lists pending cloud migrations; `--sql` prints their raw SQL. |
 | `projects list` / `create` | Experimental | Yes | Flags differ (no `--org-id`/`--region`). |
 | `projects api-keys` / `delete` | No | Yes | Not registered. |
-| `functions *` | No | Yes | Edge Functions are not implemented yet. |
+| `functions *` | No | Yes | Separate serve/deployment/management commands are absent; normal `dev` / `start` runs function workers when the CLI is hosted by Bun. |
 | `gen types` / `gen signing-key` | No | Yes | Not implemented yet. |
 | `seed buckets` | No | Yes | Depends on Storage RLS/role support landing first. |
 | `test db` / `test new` | No | Yes | Not applicable on SQLite (no pgTAP). |
@@ -89,7 +91,7 @@ If you're coming from the `supabase` CLI, these upstream capabilities have no li
 - **Docker-backed commands**: `stop`, `db start`, `services`. There's no container stack.
 - **`db` toolbox**: `pull`, `dump`, `lint`, `advisors` are not registered.
 - **`migration` toolbox**: `down`, `repair`, `squash`, `fetch` are not registered.
-- **`functions`**: Edge Functions aren't implemented.
+- **`functions`**: The separate command group is absent. Use normal `dev` / `start` for [local function execution](/other/edge-functions) with the CLI hosted by Bun, and Supabase tooling for hosted deployment.
 - **`gen`**: no type generation yet.
 - **`seed buckets`, `bootstrap`, `test db`/`test new`**: not planned or blocked on other features.
 - Every Management API group (`orgs`, `secrets`, `branches`, `sso`, `backups`, `snippets`, `postgres-config`, `network-*`, `encryption`, `inspect`, `storage`, `telemetry`): deferred pending Supabase Lite cloud.

@@ -1,3 +1,10 @@
+import { mergeFilter } from "./query/merge-filters.js";
+import {
+  markJsonbLiteral,
+  tryJsonbContainment as compileJsonbContainment,
+  assertJsonbQueryLimits,
+} from "./query/lite-adapter.js";
+import { isAuthUidDefault, applyAuthUidDefaults, authUidImplicitColumns } from "./auth-uid-defaults.js";
 import * as _t from "jsonv-ts";
 import { s } from "jsonv-ts";
 import { Deparser, QuoteUtils } from "pgsql-deparser";
@@ -3896,7 +3903,7 @@ function Fa(t, e, n) {
             column: p,
             pgTypeName: m,
             nullable: !v && !E,
-            defaultValue: null,
+            defaultValue: isAuthUidDefault(x?.Constraint?.raw_expr) ? "auth.uid()" : null,
             defaultFn: null,
             isPrimaryKey: E,
             isUnique: !!P,
@@ -4075,6 +4082,10 @@ function Fa(t, e, n) {
                 },
                 p.factoryExtra,
               );
+            continue;
+          }
+          if (d.subtype === "AT_ColumnDefault" && d.name) {
+            u(d.name, { defaultValue: isAuthUidDefault(d.def) ? "auth.uid()" : null });
             continue;
           }
           if (d.subtype === "AT_SetNotNull" && d.name) {
@@ -5050,6 +5061,7 @@ var iA,
         if (r === "CONSTR_NULL") return "NULL";
         if (r === "CONSTR_NOTNULL") return "NOT NULL";
         if (r === "CONSTR_DEFAULT" && e.raw_expr) {
+          if (isAuthUidDefault(e.raw_expr)) return "DEFAULT NULL";
           let s = this.unwrapConstCast(e.raw_expr),
             i = this.visit(s, n);
           return i.includes("(") && !i.startsWith("(")
@@ -5988,6 +6000,7 @@ var iA,
       }
       extractDefaultValue(e) {
         if (!e.def) return null;
+        if (isAuthUidDefault(e.def)) return "NULL";
         let n = this.unwrapConstCast(e.def);
         if ("A_Const" in n) {
           let r = n.A_Const;
@@ -9812,7 +9825,10 @@ function Tl(t, e, n) {
     }
     let s = e.map((o) => Bd(o)),
       i = s.length === 1 ? s[0] : s.flat();
-    n[`$${t}`] = i;
+    n[`$${t}`] =
+      t === "and" && Object.hasOwn(n, "$and") && Array.isArray(n.$and)
+        ? [...n.$and, ...i]
+        : i;
     return;
   }
   if (t === "not.or" || t === "not.and") {
@@ -9826,7 +9842,7 @@ function Tl(t, e, n) {
   Hd(r);
   for (let s of e) {
     let i = Rl(s);
-    n[r] ? Object.assign(n[r], i) : (n[r] = i);
+    mergeFilter(n, r, i);
   }
 }
 function _S(t, e, n) {
@@ -9878,7 +9894,8 @@ function Rl(t) {
   if (n && a === "$in") return { $notIn: xl(a, i) };
   if (n && a === "$is") return { $isNot: xl(a, i) };
   let u = a === "$textSearch" ? RS(i, l, c) : xl(a, i);
-  return n ? { $not: { [a]: u } } : { [a]: u };
+  const operators = markJsonbLiteral({ [a]: u }, a, i);
+  return n ? { $not: operators } : operators;
 }
 function xl(t, e) {
   if (t === "$in" || t === "$notIn") {
@@ -11234,6 +11251,14 @@ function ke(t, e, n) {
       let o = i,
         a = JS(s);
       for (let [l, c] of Object.entries(o)) {
+        const jsonb = tryJsonbContainment(s, l, c, n, o, {
+          parsePath: _n,
+          reference: fe,
+        });
+        if (jsonb) {
+          r.push(jsonb);
+          continue;
+        }
         if (xt(c)) {
           let u = rs[l];
           if (!u) throw new Error(`Unsupported ref operator: ${l}`);
@@ -11244,8 +11269,13 @@ function ke(t, e, n) {
         }
         if (l === "$not") {
           let u = c;
-          for (let [f, d] of Object.entries(u))
-            if (a) r.push(t.not(cp(s, f, d, n)));
+          for (let [f, d] of Object.entries(u)) {
+            const jsonb = tryJsonbContainment(s, f, d, n, u, {
+              parsePath: _n,
+              reference: fe,
+            });
+            if (jsonb) r.push(t.not(jsonb));
+            else if (a) r.push(t.not(cp(s, f, d, n)));
             else {
               let p = op(s, f, d, n);
               if (p) {
@@ -11266,6 +11296,7 @@ function ke(t, e, n) {
               if (!g) throw new Error(`Unsupported operator: ${f}`);
               r.push(t.not(g(t, En(s, n), d)));
             }
+          }
         } else if (io(c)) {
           let u = is(c, n),
             f = n.operators[l];
@@ -13617,7 +13648,7 @@ function rm(t, e) {
 function Z_(t, e, n) {
   let r = n.insertInto(t.from);
   if (t.values) {
-    let i = ic(t.values, e, t.schema, t.from, { applyDefaults: true });
+    let i = insertValues(t, e);
     r = r.values(i);
   }
   let s = t.from ? { ...e, currentTable: t.from } : e;
@@ -13669,8 +13700,7 @@ function sm(t, e, n, r) {
   } else return t.where(sql.ref(a), "in", o);
 }
 function nE(t, e, n) {
-  let r = t.values,
-    s = ic(r, e, t.schema, t.from, { applyDefaults: true }),
+  let s = insertValues(t, e),
     i = n.insertInto(t.from).values(s);
   t.onConflict &&
     (i = i.onConflict((a) => {
@@ -13679,8 +13709,10 @@ function nE(t, e, n) {
           ? a.column(t.onConflict[0])
           : a.columns(t.onConflict);
       if (t.ignoreDuplicates) return l.doNothing();
-      let c = Array.isArray(s) ? s[0] : s,
-        u = Object.keys(c).filter((f) => !t.onConflict.includes(f));
+      let c = Array.isArray(s) ? s : [s],
+        u = [...new Set(c.flatMap(Object.keys))].filter(
+          (f) => !t.onConflict.includes(f) && !t[authUidImplicitColumns]?.includes(f),
+        );
       return u.length === 0
         ? l.doUpdateSet({
             [t.onConflict[0]]: sql.ref(`excluded.${t.onConflict[0]}`),
@@ -13693,6 +13725,36 @@ function nE(t, e, n) {
     }));
   let o = t.from ? { ...e, currentTable: t.from } : e;
   return ((i = fs(i, t.select, o)), i);
+}
+function insertValues(ast, context) {
+  let columns = ast.$meta?.columns;
+  let values = ic(ast.values, context, ast.schema, ast.from, {
+    // Explicit request columns use database defaults, not JS-side defaults.
+    applyDefaults: !columns,
+  });
+  if (!columns) return values;
+  let defaults = new Map();
+  if (ast.$meta.missing === "default" && context.dialect === "sqlite") {
+    let schema = ast.schema ?? context.introspection?.default_schema ?? "public";
+    for (let column of context.introspection?.columns ?? [])
+      if (column.table === ast.from && (column.schema || "public") === schema)
+        defaults.set(column.name, column.default_value);
+  }
+  let normalize = (value) => {
+    let row = { ...value };
+    for (let column of columns) {
+      if (Object.hasOwn(row, column)) continue;
+      row[column] = ast.$meta.missing !== "default"
+        ? null
+        : context.dialect === "postgres"
+          ? sql`DEFAULT`
+          // SQLite has no DEFAULT expression inside VALUES. Its introspected
+          // column default is already translated SQL, evaluated per row by SQLite.
+          : defaults.get(column) == null ? null : sql.raw(defaults.get(column));
+    }
+    return row;
+  };
+  return Array.isArray(values) ? values.map(normalize) : normalize(values);
 }
 function rE(t, e, n) {
   let r = n.introspection?.functions;
@@ -14249,7 +14311,7 @@ function DE(t) {
 function ne(t, e = "postgres", n) {
   let r = DE(e),
     s = n && "introspection" in n ? n : { db: n, introspection: void 0 };
-  return tm(t, {
+  const query = tm(t, {
     ...r,
     dialect: e,
     db: s.db ?? r.db,
@@ -14257,6 +14319,32 @@ function ne(t, e = "postgres", n) {
     schema: s.schema,
     requestSchema: s.requestSchema,
   });
+  if (e === "sqlite") {
+    try {
+      assertJsonbQueryLimits(query.compile());
+    } catch (error) {
+      throwJsonbError(error);
+    }
+  }
+  return query;
+}
+function throwJsonbError(error) {
+  if (error?.code === "54000")
+    throw new Ie({
+      httpStatus: 400,
+      code: error.code,
+      message: error.message,
+      details: null,
+      hint: "Reduce the JSONB filter size or depth.",
+    });
+  throw error;
+}
+function tryJsonbContainment(...args) {
+  try {
+    return compileJsonbContainment(...args);
+  } catch (error) {
+    throwJsonbError(error);
+  }
 }
 var Wc = Ja(cc());
 Xn();
@@ -15729,7 +15817,13 @@ function fh(t, e) {
     }
     if (o.code === "42P17")
       return T(500, o.code, o.message, o.detail ?? null, o.hint ?? null);
-    if (a === "42" || a === "22" || a === "21" || o.code === "23502") {
+    if (
+      a === "42" ||
+      a === "22" ||
+      a === "21" ||
+      o.code === "23502" ||
+      o.code === "23514"
+    ) {
       let l = o.message,
         c = i ? lh(i) : void 0;
       if (o.code === "42703" && c) {
@@ -16062,7 +16156,7 @@ function rr({
     (i = Lm(i, e, r, jm(e))),
     (i = qm(i, e.select, n.dialect)),
     s?.meta?.return === "representation" &&
-      (e.type === "insert" || e.type === "upsert" || e.type === "update") &&
+      e.type === "update" &&
       (i = nh(i, s.meta?.columns, s.mutationPlan.bodyKeySets)),
     i
   );
@@ -16409,6 +16503,33 @@ async function Th(t, e, n, r, s, i) {
     m = new Map(p.map((g) => [h(g), g]));
   return t.map((g) => m.get(h(g)) ?? g);
 }
+async function atomicSingularMutation(t) {
+  const execute = async (db) => {
+    const response = await Rh({ ...t, db });
+    if (response.status === 406) throw new $o(response);
+    return response;
+  };
+  try {
+    if (t.db.isTransaction || t.connection.harnessHoldingOuterTx) {
+      // Keep any caller-owned transaction and its unrelated writes intact.
+      const savepoint = sql.id(`supalite_singular_${gN().replaceAll("-", "")}`);
+      await sql`SAVEPOINT ${savepoint}`.execute(t.db);
+      try {
+        const response = await execute(t.db);
+        await sql`RELEASE SAVEPOINT ${savepoint}`.execute(t.db);
+        return response;
+      } catch (error) {
+        await sql`ROLLBACK TO SAVEPOINT ${savepoint}`.execute(t.db);
+        await sql`RELEASE SAVEPOINT ${savepoint}`.execute(t.db);
+        throw error;
+      }
+    }
+    return await t.connection.runInTransaction(execute);
+  } catch (error) {
+    if (error instanceof $o) return error.result;
+    throw error;
+  }
+}
 async function Rh(t) {
   let {
       ast: e,
@@ -16593,8 +16714,10 @@ async function Rh(t) {
     let z = 200;
     p && (z = st(e, "representation", u.appliedResolution, f));
     let be = h ? Rn(X[0]) : X[0],
-      Ge = vt(be),
-      wt = new TextEncoder().encode(Ge),
+      wt =
+        e.type === "query" && n?.head
+          ? null
+          : new TextEncoder().encode(vt(be)),
       Ir =
         n?.cardinality === "one"
           ? "application/vnd.pgrst.object+json"
@@ -16604,16 +16727,16 @@ async function Rh(t) {
           ? `${Ir};nulls=stripped; charset=utf-8`
           : `${Ir}; charset=utf-8`,
         "Content-Range": Qm(e, p, C, J),
-        "Content-Length": String(wt.byteLength),
       };
     return (
+      wt !== null && (Wa["Content-Length"] = String(wt.byteLength)),
       d && (Wa["Preference-Applied"] = d),
       n?.head
         ? new Response(null, { status: z, headers: Wa })
         : new Response(wt, { status: z, headers: Wa })
     );
   }
-  if (J !== void 0 && C > 0 && B === 0 && C >= J) {
+  if (J !== void 0 && C > 0 && B === 0 && C > J) {
     let z = JSON.stringify({
         code: "PGRST103",
         details: `An offset of ${C} was requested, but there are only ${J} rows.`,
@@ -16649,8 +16772,10 @@ async function Rh(t) {
     let z = A;
     Ln = Ln.map((be) => ({ [z]: be }));
   }
-  let wi = m ? Io(Ln) : vt(an),
-    Ha = new TextEncoder().encode(wi),
+  let Ha =
+      e.type === "query" && n?.head
+        ? null
+        : new TextEncoder().encode(m ? Io(Ln) : vt(an)),
     Mt = {
       "Content-Type": m
         ? "text/csv; charset=utf-8"
@@ -16658,8 +16783,8 @@ async function Rh(t) {
           ? "application/vnd.pgrst.array+json;nulls=stripped; charset=utf-8"
           : "application/json; charset=utf-8",
       "Content-Range": me,
-      "Content-Length": String(Ha.byteLength),
     };
+  if (Ha !== null) Mt["Content-Length"] = String(Ha.byteLength);
   if (!p && e.from && g) {
     let z = Vm(`/${e.from}`, new URL(g).search);
     z && (Mt["Content-Location"] = z);
@@ -17057,7 +17182,9 @@ var bT = {
             if (an) return an;
             let Ln = await _h(C);
             if (Ln) return Ln;
-            let wi = await Rh(C);
+            let wi = await (A && E?.cardinality === "one"
+              ? atomicSingularMutation(C)
+              : Rh(C));
             return a && u === "postgres" ? await dh(O, wi) : wi;
           },
           {
@@ -17934,6 +18061,9 @@ function Sg(t, e, n) {
   for (let c of n) if (sR(c).test(l)) return true;
   return false;
 }
+function isAnonymousAuthUser(user) {
+  return user.is_anonymous === true || user.is_anonymous === 1;
+}
 var Fs = class t {
   constructor(e, n, r) {
     this.repo = e;
@@ -18073,9 +18203,93 @@ var Fs = class t {
       s = this.config.additional_redirect_urls ?? [];
     return e && Sg(e, r, s) ? e : n && Sg(n, r, s) ? n : r;
   }
-  async signUp(e, n, r, s) {
+  async signUpRequest(body, redirectTo) {
+    // Go's typed decoder treats null like empty parameters, accepts field-name
+    // aliases, and ignores null assignments to strings. Validate each decoded
+    // entry before an alias can overwrite an earlier malformed value.
+    body ??= {};
+    if (typeof body !== "object" || Array.isArray(body)) {
+      throw js("Signup requires a JSON object");
+    }
+    const strings = [
+      "email",
+      "phone",
+      "password",
+      "channel",
+      "code_challenge",
+      "code_challenge_method",
+    ];
+    const decoded = {};
+    for (const [rawKey, value] of Object.entries(body)) {
+      const key = rawKey.toLowerCase();
+      if (strings.includes(key)) {
+        if (value == null) continue;
+        if (typeof value !== "string")
+          throw js(`Signup ${key} must be a string`);
+        decoded[key] = value;
+      } else if (key === "data") {
+        if (
+          value != null &&
+          (typeof value !== "object" || Array.isArray(value))
+        ) {
+          throw js("Signup data must be a JSON object");
+        }
+        decoded.data = value;
+      }
+    }
+    body = decoded;
+    if (!body.email && !body.phone) {
+      return this.signUp(body.email, body.password, body.data, redirectTo);
+    }
     if (this.config.enable_signup === false) throw Lo();
-    if (!e) throw qh();
+    if (body.phone) {
+      if (!body.password) throw K("Signup requires a valid password", 400);
+      this.assertPasswordStrong(body.password);
+      if (body.email) {
+        throw K(
+          "Only an email address or phone number should be provided on signup",
+          400,
+        );
+      }
+      throw new D(400, "phone_provider_disabled", "Phone signups are disabled");
+    }
+    return this.signUp(body.email, body.password, body.data, redirectTo);
+  }
+  async signInAnonymously(data) {
+    if (this.config.enable_anonymous_sign_ins !== true) throw qh();
+    if (this.config.enable_signup === false) throw Lo();
+    return this.repo.transaction(async (repo) => {
+      const service = new Fs(repo, this.config, this.mailer);
+      const user = await repo.createUser({
+        id: pe(),
+        email: null,
+        encrypted_password: null,
+        is_anonymous: true,
+        raw_app_meta_data: {},
+        raw_user_meta_data: data ?? {},
+      });
+      const session = await service.createSessionForUser(
+        repo.parseUserJson(user),
+        [],
+        "session",
+        { provider: "anonymous" },
+      );
+      await service.createAuditLog(
+        user.id,
+        "",
+        "user_signedup",
+        "team",
+        true,
+        "anonymous",
+      );
+      return { user: session.user, session };
+    });
+  }
+  async signUp(e, n, r, s) {
+    // The reference dispatches on email/phone only: a password supplied during
+    // anonymous signup is discarded rather than becoming a login credential.
+    if (!e) return this.signInAnonymously(r);
+    if (this.config.enable_signup === false) throw Lo();
     if (this.config.email?.enable_signup === false) throw Fh();
     if (n == null || n === void 0 || n === "")
       throw K("Signup requires a valid password", 400);
@@ -18312,6 +18526,7 @@ var Fs = class t {
           aud: e.aud || "authenticated",
           role: e.role || "authenticated",
           email: e.email ?? void 0,
+          is_anonymous: isAnonymousAuthUser(e),
           session_id: n,
         },
         this.config.jwt_secret,
@@ -18355,6 +18570,9 @@ var Fs = class t {
   async updateUser(e, n, r) {
     let s = await this.repo.findUserById(e);
     if (!s) throw Pt();
+    if (isAnonymousAuthUser(s) && n.password && !n.email) {
+      throw K("Anonymous users cannot update their password", 422);
+    }
     let i = this.repo.parseUserJson(s),
       o = {},
       a = null,
@@ -18387,8 +18605,16 @@ var Fs = class t {
         if (((l = true), p !== i.email?.toLowerCase())) {
           let h = await this.repo.findUserByEmail(p);
           if (h && h.id !== e) throw Lh();
-          if (((a = await this.sendEmailChange(s, p, o, r)), !a))
-            throw pt("Database error updating user");
+          const autoconfirm = !(
+            this.config.email?.enable_confirmations ??
+            this.config.enable_confirmations ??
+            false
+          );
+          if (isAnonymousAuthUser(i) && autoconfirm) {
+            return this.autoConfirmAnonymousEmail(e, p, o, c);
+          }
+          a = await this.sendEmailChange(s, p, o, r);
+          if (!a) throw pt("Database error updating user");
         }
       }
     u || (l = true);
@@ -18416,6 +18642,79 @@ var Fs = class t {
         )));
     let d = await this.repo.findIdentitiesByUserId(e);
     return this.mapUserToResponse(f, d, "user");
+  }
+  async autoConfirmAnonymousEmail(userId, email, updates, passwordChanged) {
+    return this.repo.transaction(async (repo) => {
+      const service = new Fs(repo, this.config, this.mailer);
+      const current = await repo.findUserById(userId);
+      if (!current || !isAnonymousAuthUser(current)) {
+        throw K(
+          "Anonymous user was already converted; retry the email update",
+          409,
+        );
+      }
+      const owner = await repo.findUserByEmail(email);
+      if (owner && owner.id !== userId) throw Lh();
+      const user = repo.parseUserJson(current);
+      const identityData = {
+        sub: userId,
+        email,
+        email_verified: true,
+        phone_verified: false,
+      };
+      const identities = await repo.findIdentitiesByUserId(userId);
+      const identity = identities.find((item) => item.provider === "email");
+      if (identity) {
+        await repo.updateIdentity(identity.id, {
+          identity_data: { ...identity.identity_data, ...identityData },
+        });
+      } else {
+        await repo.createIdentity({
+          id: pe(),
+          provider: "email",
+          provider_id: userId,
+          user_id: userId,
+          identity_data: identityData,
+        });
+      }
+      // Auth v2.186 preserves app metadata in this autoconfirm path. The
+      // confirmed-link path below updates providers as part of verification.
+      const updated = await repo.updateUser(userId, {
+        ...updates,
+        email,
+        confirmed_at: new Date().toISOString(),
+        is_anonymous: false,
+        email_change: null,
+        email_change_token_current: null,
+        email_change_token_new: null,
+        raw_user_meta_data: {
+          ...(updates.raw_user_meta_data ?? user.raw_user_meta_data),
+          email_verified: true,
+        },
+      });
+      if (!updated) throw pt("Database error updating user");
+      if (passwordChanged) {
+        await service.createAuditLog(
+          userId,
+          user.email ?? "",
+          "user_updated_password",
+          "user",
+          false,
+        );
+      }
+      await service.createAuditLog(
+        userId,
+        user.email ?? "",
+        "user_modified",
+        "user",
+        false,
+      );
+      return service.mapUserToResponse(
+        repo.parseUserJson(updated),
+        await repo.findIdentitiesByUserId(userId),
+        "user",
+      );
+    });
   }
   async signOut(e, n, r) {
     let s = n ?? "local";
@@ -18607,6 +18906,18 @@ var Fs = class t {
         (o.email_change = null),
         (o.email_change_token_current = null),
         (o.email_change_token_new = null));
+      if (isAnonymousAuthUser(s)) {
+        // verifyOtp owns the transaction and has claimed the token. A conflict
+        // or identity failure must roll back that claim and every conversion
+        // field, leaving the existing guest and its application data intact.
+        const owner = await this.repo.findUserByEmail(s.email_change);
+        if (owner && owner.id !== e.id) throw Lh();
+        o.is_anonymous = false;
+        o.raw_user_meta_data = {
+          ...s.raw_user_meta_data,
+          email_verified: true,
+        };
+      }
       let u = (await this.repo.findIdentitiesByUserId(e.id)).find(
         (f) => f.provider === "email",
       );
@@ -18795,6 +19106,7 @@ var Fs = class t {
           aud: e.aud || "authenticated",
           role: e.role || "authenticated",
           email: e.email ?? void 0,
+          is_anonymous: isAnonymousAuthUser(e),
           session_id: l,
         },
         this.config.jwt_secret,
@@ -18839,7 +19151,7 @@ var Fs = class t {
         identities: n.map((a) => this.mapIdentityToResponse(a, r, e)),
         created_at: e.created_at,
         updated_at: e.updated_at,
-        is_anonymous: false,
+        is_anonymous: isAnonymousAuthUser(e),
       };
     return (
       e.confirmed_at &&
@@ -20256,6 +20568,7 @@ function $g(t = {}, e) {
     email: t.email ?? gR(e) ?? new ur(),
     sms: t.sms ?? new Hs(),
     cache: t.cache ?? new lr(),
+    functions: t.functions,
   };
 }
 var yR = "/auth/v1/verify";
@@ -20637,7 +20950,7 @@ var Tu = new Re()
   .post("/signup", async (t) => {
     let e = await $t(t, { requireBody: true }),
       { authService: n } = t.var,
-      r = await n.signUp(e.email, e.password, e.data, On(t));
+      r = await n.signUpRequest(e, On(t));
     return r.session
       ? (Vs(t, r.session), t.json(r.session, 200))
       : t.json(r.user, 200);
@@ -22812,7 +23125,7 @@ var VR = s.object({
           e.destinationBucket,
           t.req.header("x-upsert") === "true",
         );
-      return t.json({ key: r.key }, 200);
+      return t.json({ Key: `${e.destinationBucket ?? e.bucketId}/${r.key}` }, 200);
     })
     .get("/object/info/:bucketId/*", async (t) => {
       let e = t.req.param("bucketId"),
@@ -24907,6 +25220,62 @@ function sb(t) {
             ? { type: "secret", claims: { role: "service_role" } }
             : null;
 }
+// Trusted host-supplied execution only: no file loading or runtime isolation.
+function createFunctionsRoutes(app, resolveKey) {
+  const invoke = async (context) => {
+    const name = context.req.param("name");
+    const functions = app.config.functions;
+    const config = functions && Object.hasOwn(functions, name)
+      ? functions[name]
+      : undefined;
+    const executor = app.drivers.functions;
+    if (!config || config.enabled === false || !executor)
+      return context.json({ code: "NOT_FOUND", message: "Function not found" }, 404);
+
+    let jwt = null;
+    let apiKeyType = null;
+    // Supabase dispatches OPTIONS to the function without gateway verification.
+    if (config.verify_jwt !== false && context.req.method !== "OPTIONS") {
+      const authorization = context.req.header("Authorization");
+      const token = authorization?.match(/^Bearer\s+(\S+)$/i)?.[1];
+      const credential = authorization !== undefined ? token : context.req.header("apikey");
+      if (!credential)
+        return context.json({ code: 401, message: "Missing authorization header" }, 401);
+      const key = resolveKey ? await resolveKey(credential, context) : null;
+      if (key) {
+        const agent = context.req.header("User-Agent");
+        if (key.type === "secret" && agent && tk.test(agent))
+          return context.json({ code: 401, message: "Forbidden use of secret API key in browser" }, 401);
+        apiKeyType = key.type;
+      } else if (token) {
+        const secret = app.config.auth?.jwt_secret;
+        if (!secret)
+          return context.json({ code: 401, message: "Invalid JWT" }, 401);
+        try {
+          // Gateway validity, not user/session lookup: legacy anon and service JWTs
+          // need not have a sub claim. Handlers remain responsible for authorization.
+          jwt = await Zh(token, secret);
+        } catch {
+          return context.json({ code: 401, message: "Invalid JWT" }, 401);
+        }
+      } else {
+        return context.json({ code: 401, message: "Invalid JWT" }, 401);
+      }
+    }
+    const response = await executor.fetch(context.req.raw, { name, jwt, apiKeyType });
+    // Node adapters can replace global Response while fetch()/Response.json()
+    // still return native instances. Accept both without reading their bodies.
+    if (Object.prototype.toString.call(response) !== "[object Response]")
+      throw new TypeError("Functions executor must return a Response");
+    if (context.req.method === "HEAD" && response.body) {
+      // Hono suppresses HEAD bodies; cancel first so the producer can release resources.
+      await response.body.cancel();
+      return new Response(null, response);
+    }
+    return response;
+  };
+  return new Re().all("/:name", invoke).all("/:name/*", invoke);
+}
 function ib(t, e = {}) {
   let n = e.middlewares ?? [
       async (f, d) => {
@@ -24974,6 +25343,9 @@ function ib(t, e = {}) {
     })
     .use(...n)
     .use(l)
+    // Functions owns JWT verification, including explicitly keyless webhooks.
+    // Do not run generic user/session auth on this route.
+    .route("/functions/v1", createFunctionsRoutes(t, o))
     .use(_u())
     .route("/auth/v1", Tu)
     .route("/rest/v1", Ah({ forceRollback: e.forceRollback }))
@@ -26951,6 +27323,18 @@ var bi = class t extends Ps {
       let n = e,
         r = n?.cause?.code ?? n?.code,
         s = n?.cause?.message ?? n?.message ?? String(e);
+      // node:sqlite reports extended result codes in errcode, not code.
+      if (r === "ERR_SQLITE_ERROR")
+        r =
+          {
+            275: "SQLITE_CONSTRAINT_CHECK",
+            787: "SQLITE_CONSTRAINT_FOREIGNKEY",
+            1299: "SQLITE_CONSTRAINT_NOTNULL",
+            1555: "SQLITE_CONSTRAINT_PRIMARYKEY",
+            2067: "SQLITE_CONSTRAINT_UNIQUE",
+          }[n?.cause?.errcode ?? n?.errcode] ?? r;
+      if (r === "SQLITE_CONSTRAINT_CHECK")
+        return Object.assign(new Error(s), { code: "23514", detail: s });
       if (r === "SQLITE_CONSTRAINT_NOTNULL")
         return Object.assign(new Error(s), { code: "23502", detail: s });
       if (
@@ -27013,6 +27397,7 @@ var bi = class t extends Ps {
           throw new At(s, i);
         e.schema = void 0;
       }
+      e = applyAuthUidDefaults(e, n, this.config.translation?.deparse?.schema);
       return await this.applyRls(e, n);
     }
     rlsEnabledFromHistory() {

@@ -6,16 +6,28 @@
   "description": "Directly editable @supabase/lite 0.11.0 implementation baseline",
   "license": "Apache-2.0",
   "scripts": {
-    "test": "bun test --bail --timeout 60000",
-    "check": "bun run test"
+    "test": "bun scripts/test.mjs",
+    "test:core": "bun test --bail --timeout 60000 test/compiler.test.mjs",
+    "demo": "bun examples/catalog.mjs",
+    "benchmark": "bun scripts/benchmark.mjs",
+    "check": "bun run test",
+    "benchmark:head": "bun scripts/benchmark-head.mjs"
   },
   "dependencies": {
     "kysely": "0.28.11"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "0.4.5",
+    "@electric-sql/pglite": "0.4.6",
+    "@hono/node-server": "1.19.17",
     "@libsql/client": "0.17.4",
     "@supabase/lite": "0.11.0",
-    "@supabase/supabase-js": "2.117.2"
+    "@supabase/supabase-js": "2.117.2",
+    "bcryptjs": "3.0.3",
+    "postgres": "3.4.8"
+  },
+  "overrides": {
+    "@supabase/lite@0.11.0": {
+      "@electric-sql/pglite": "0.4.6"
+    }
   }
 }

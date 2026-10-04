@@ -66,6 +66,14 @@ The runtime metadata cache is disposable. Missing, corrupt, old, stale, or tampe
 
 `lite dev` and the Vite plugin remain declarative workflows: they apply pending migrations, reconcile the current `schemas/*.sql`, and replace runtime metadata from the schema they actually applied. `lite start` ignores that declarative state. If declarative changes made the live structure differ from applied migration history, generate a migration with `lite db diff -f <name>` and use `lite db reset` to establish a clean migration-derived database before running `lite start`.
 
+## Shutdown and durable restart
+
+On `SIGTERM` or `SIGINT`, `lite dev` and `lite start` set `/_system/ping` readiness to 503 and reject new Functions invocations. Repeated signals share the same shutdown. Admitted Functions can finish their response streams and authenticated calls to local Auth, Data, and Storage. Ordinary API requests remain accepted during this stage so those callbacks work; a supervisor should stop routing new traffic when readiness fails.
+
+Functions and HTTP share a five-second drain period. The listener then closes remaining connections, and workers/database cleanup use the remainder of a ten-second total budget. Cleanup errors or budget exhaustion exit nonzero. Use a process supervisor for a hard deadline if the main event loop stops responding.
+
+After the old PID exits, restart `lite start` with the same configuration, SQLite database and sidecars, and filesystem Storage directory. Completed authenticated writes persist across graceful restart. Check interrupted writes before retrying: they may have committed without delivering a response. Run one process per project's durable files; request-triggered restart and scale-to-zero scheduling belong to the supervisor.
+
 ## Admin mode
 
 Loopback `lite dev`, `lite start`, and Vite dev listeners run with **admin mode on**. A request that arrives with no credential at all (no `apikey` header or query parameter, no `Authorization` header) is served as `service_role`, so a local admin UI like the built-in studio can read and edit any table without a secret key ever reaching the browser. This mirrors self-hosted Supabase Studio, where the Next.js server holds the service key and does the privileged work on the client's behalf.

@@ -1,0 +1,110 @@
+{
+  "description": "Observed local timing evidence. All medians are preserved; raw measured samples are retained for the indexed-selective read and index write controls. Times are milliseconds except the explicitly labeled compiler control; values rounded to six decimals. The committed test reproduces correctness and plans, not these timing measurements.",
+  "generatedAt": "2026-10-04T00:42:34.949Z",
+  "baseCommit": "46d75c1030910e53885197f924555c483f88b844",
+  "environment": {
+    "node": "v24.19.0",
+    "platform": "linux x64",
+    "cpu": "AMD EPYC 9V74 80-Core Processor",
+    "versions": {
+      "node": {
+        "sqlite": "3.53.3"
+      },
+      "libsql": {
+        "sqlite": "3.45.1"
+      }
+    }
+  },
+  "sourceSha256": {
+    "baseline/src/jsonb-object-fast-path.ts": "bf98544a7f3c9f2b13a11c41b9fa1c34e79a45ed25c7bdb65ca4e3bbf4d3a444",
+    "baseline/src/jsonb-containment.ts": "8ad3e3848025ebacfd5a3dc89d7f9482b017dc724d849123bc5d305bcb94c547",
+    "baseline/src/lite-adapter.ts": "444d9d016e31eaccae48f3ab006299ed036309aafb5f136548a4c16b93d65684",
+    "baseline/src/merge-filters.ts": "89f35ba362765bde4f870e327b189451847fea3788693d7e23ff2b7947c72f74",
+    "baseline/package-lock.json": "5b01ef3c991116192d92fb9cfc1fdf7837514480d68870be93c13aae8fa1f5e3",
+    "candidate/src/jsonb-object-fast-path.ts": "b16fe5ae5c147bf032e82d417c75d4651420d4823a09cf73adcc0b5fbe6f0b53",
+    "candidate/src/jsonb-containment.ts": "7e85fcbc7f513a2cc6a476654071fc4695eb08b61c2860200b42c3089aa934c4",
+    "candidate/src/lite-adapter.ts": "8ec695beca01f99e3d5dc8910e4e4c9fedae5f003d1406e0aa27140be7c9f454",
+    "candidate/src/merge-filters.ts": "89f35ba362765bde4f870e327b189451847fea3788693d7e23ff2b7947c72f74",
+    "candidate/package-lock.json": "5b01ef3c991116192d92fb9cfc1fdf7837514480d68870be93c13aae8fa1f5e3"
+  },
+  "fixture": {
+    "rows": 50000,
+    "selectiveMatches": 50,
+    "allMatchCount": 50000,
+    "rowLimit": 1000,
+    "data": "Deterministic sequential integer primary keys; one open per 1000; 256-byte description; raw JSON text in JSONB-metadata column. No fixture generation in query timing.",
+    "indexDdl": "CREATE INDEX docs_status_idx ON docs ((body->>'status'));",
+    "translatedDdl": "CREATE INDEX docs_status_idx ON docs ((body ->> 'status'));"
+  },
+  "method": {
+    "rowSdk": "client.from('docs').select('id').contains('body',{status:'open'})",
+    "countSdk": "client.from('docs').select('id',{head:true,count:'exact'}).contains('body',{status:'open'})",
+    "limits": "Default server cap 1000 rows preserved. Head exact-count issues limited row SELECT plus unrestricted COUNT; raw count times only the captured COUNT statement.",
+    "raw": "Node: reused prepared statement all(...args). Local libSQL: client.execute({sql,args}). Includes row materialization; no network.",
+    "sdk": "Actual supabase-js requests dispatched via in-process Request/App.fetch, including compile/execute/response parse. No HTTP network.",
+    "pairing": "Three warmups and 11 measured rounds per metric by default; variant order alternates by round. Assertions outside timed interval; no timing based on fabricated SQL."
+  },
+  "validation": "Each timed execution checked exact row count and sorted ID checksum, or exact COUNT, outside the timed interval. Candidate checksums and counts equal baseline for every case. Both received identical fixtures, indexes and ANALYZE.",
+  "capturedSql": {
+    "baseline": {
+      "row": {
+        "sql": "select \"id\" from \"docs\" where (select case when \"__jsonb_fast_input\".\"document\" is null then null\n    else coalesce((json_type(\"__jsonb_fast_input\".\"document\") = 'object' and (json_type(\"__jsonb_fast_input\".\"document\", ?) = 'text' and\n        json_extract(\"__jsonb_fast_input\".\"document\", ?) collate binary = ?)), 0) end\n    from (select \"body\" as document) as __jsonb_fast_input) limit ?",
+        "args": ["$.status", "$.status", "open", 1000]
+      },
+      "count": {
+        "sql": "select count(*) as \"__count\" from \"docs\" where (select case when \"__jsonb_fast_input\".\"document\" is null then null\n    else coalesce((json_type(\"__jsonb_fast_input\".\"document\") = 'object' and (json_type(\"__jsonb_fast_input\".\"document\", ?) = 'text' and\n        json_extract(\"__jsonb_fast_input\".\"document\", ?) collate binary = ?)), 0) end\n    from (select \"body\" as document) as __jsonb_fast_input)",
+        "args": ["$.status", "$.status", "open"]
+      }
+    },
+    "candidate": {
+      "row": {
+        "sql": "select \"id\" from \"docs\" where ((select case when \"__jsonb_fast_input\".\"document\" is null then null\n    else coalesce((json_type(\"__jsonb_fast_input\".\"document\") = 'object' and json_type(\"__jsonb_fast_input\".\"document\", ?) = 'text'), 0) end\n    from (select \"body\" as document) as __jsonb_fast_input) and (\"body\"->>'status') collate binary = ?) limit ?",
+        "args": ["$.status", "open", 1000]
+      },
+      "count": {
+        "sql": "select count(*) as \"__count\" from \"docs\" where ((select case when \"__jsonb_fast_input\".\"document\" is null then null\n    else coalesce((json_type(\"__jsonb_fast_input\".\"document\") = 'object' and json_type(\"__jsonb_fast_input\".\"document\", ?) = 'text'), 0) end\n    from (select \"body\" as document) as __jsonb_fast_input) and (\"body\"->>'status') collate binary = ?)",
+        "args": ["$.status", "open"]
+      }
+    }
+  },
+  "readMedians": {
+    "columns": ["engine", "case", "baseline_raw_rows_ms", "candidate_raw_rows_ms", "baseline_sdk_rows_ms", "candidate_sdk_rows_ms", "baseline_raw_count_ms", "candidate_raw_count_ms", "baseline_sdk_count_ms", "candidate_sdk_count_ms", "verifiedReturnedRows", "verifiedTotalCount", "rowSha256", "baselineOuterPlan", "candidateOuterPlan"],
+    "rows": [["node", "unindexed_selective", 40.440195, 22.309856, 41.118464, 24.102729, 39.800319, 22.323325, 82.496299, 47.096189, 50, 50, "8309e517998d942d47eda5b1e1a6fddfa522bd014fabf6e91944331043cbd42b", "SCAN docs", "SCAN docs"], ["node", "indexed_selective", 40.93294, 0.237376, 41.128495, 1.375726, 40.324717, 0.124397, 81.124839, 1.685592, 50, 50, "8309e517998d942d47eda5b1e1a6fddfa522bd014fabf6e91944331043cbd42b", "SCAN docs", "SEARCH docs USING INDEX docs_status_idx (<expr>=?)"], ["node", "indexed_all_match", 1.086262, 1.015165, 2.76275, 2.776821, 38.152354, 37.565042, 42.926477, 41.616067, 1000, 50000, "0de41d33d8e41ee4a69e898bcbcc42f7c9e65f7cdce1239a00def95ef7dd206b", "SCAN docs", "SCAN docs"], ["node", "unindexed_all_match", 1.019334, 1.006205, 2.41884, 2.340242, 39.456214, 37.152717, 42.407817, 38.759426, 1000, 50000, "0de41d33d8e41ee4a69e898bcbcc42f7c9e65f7cdce1239a00def95ef7dd206b", "SCAN docs", "SCAN docs"], ["libsql", "unindexed_selective", 50.667768, 30.919135, 51.12772, 31.293952, 50.460541, 30.373937, 103.925939, 62.742441, 50, 50, "8309e517998d942d47eda5b1e1a6fddfa522bd014fabf6e91944331043cbd42b", "SCAN docs", "SCAN docs"], ["libsql", "indexed_selective", 49.775101, 0.367192, 51.212441, 1.300886, 50.143004, 0.284067, 100.893291, 1.552123, 50, 50, "8309e517998d942d47eda5b1e1a6fddfa522bd014fabf6e91944331043cbd42b", "SCAN docs", "SEARCH docs USING INDEX docs_status_idx (<expr>=?)"], ["libsql", "indexed_all_match", 2.18946, 2.200867, 3.526188, 3.463223, 48.663282, 45.576655, 52.497975, 49.623846, 1000, 50000, "0de41d33d8e41ee4a69e898bcbcc42f7c9e65f7cdce1239a00def95ef7dd206b", "SCAN docs", "SCAN docs"], ["libsql", "unindexed_all_match", 2.223561, 2.130891, 3.331164, 3.250333, 48.553648, 44.7015, 52.848477, 48.717805, 1000, 50000, "0de41d33d8e41ee4a69e898bcbcc42f7c9e65f7cdce1239a00def95ef7dd206b", "SCAN docs", "SCAN docs"]]
+  },
+  "indexedSelectiveSamples": {
+    "columns": ["engine", "variant", "raw_rows_ms", "sdk_rows_ms", "raw_count_ms", "sdk_count_ms"],
+    "rows": [
+      ["node", "baseline", [39.473919, 41.842667, 39.480299, 40.517076, 40.380731, 42.17688, 41.928085, 40.435744, 40.93294, 42.679324, 41.488316], [40.873112, 40.417877, 39.786128, 41.850389, 56.267176, 41.154264, 40.503816, 41.128495, 41.813464, 39.335792, 41.436117], [40.277987, 40.667783, 39.756554, 39.36752, 39.367439, 40.54608, 41.473773, 41.116306, 43.241469, 40.324717, 39.869173], [81.124839, 79.23527, 84.396965, 80.179999, 82.774326, 81.563407, 81.129625, 81.119361, 82.073464, 80.561102, 79.851482]],
+      ["node", "candidate", [0.237376, 0.079048, 0.509355, 0.147802, 0.239981, 0.080401, 0.268853, 0.0862, 0.338749, 0.092809, 0.288283], [1.503639, 1.215876, 1.375726, 0.982857, 1.505612, 0.996116, 1.449878, 1.294866, 1.408666, 0.920083, 1.472642], [0.127191, 0.037126, 0.151718, 0.038408, 0.124397, 0.04027, 0.136946, 0.039028, 0.150967, 0.039319, 0.133791], [1.653304, 1.048185, 1.743349, 1.195445, 1.925042, 1.179933, 1.928427, 1.358701, 1.829098, 1.685592, 1.771661]],
+      ["libsql", "baseline", [49.053797, 49.775101, 49.18197, 50.588444, 51.955318, 49.685917, 49.694129, 55.455719, 49.060858, 51.179182, 51.086632], [51.212441, 52.699877, 50.70564, 50.830747, 51.924962, 52.541729, 50.694362, 51.323819, 49.838877, 50.687953, 51.524521], [49.983604, 50.29999, 51.493264, 50.143004, 48.879465, 53.109212, 49.144924, 48.648248, 49.273467, 51.41749, 50.607963], [106.030352, 100.893291, 106.873058, 104.839372, 100.335192, 99.508189, 98.729839, 101.017077, 100.695984, 100.856396, 100.990567]],
+      ["libsql", "candidate", [0.483527, 0.188393, 0.481374, 0.177376, 0.376706, 0.167662, 0.367192, 0.248003, 0.4525, 0.191398, 0.459601], [1.300886, 0.859251, 1.305292, 0.828796, 1.342167, 0.999292, 1.365803, 0.763427, 1.362058, 0.959432, 1.422277], [0.334823, 0.100621, 0.284067, 0.084718, 0.361403, 0.094492, 0.349526, 0.134542, 0.289235, 0.122474, 0.294943], [1.900125, 0.987303, 1.596169, 1.233173, 1.723571, 1.422859, 1.994107, 1.101956, 1.552123, 1.034936, 1.69668]]
+    ]
+  },
+  "indexStorage": {
+    "method": "Both engines: PRAGMA active-page growth agrees with dbstat; in-memory configuration, not WAL/fsync or process-memory measurement.",
+    "pageSize": 4096,
+    "indexPages": 176,
+    "indexBytes": 720896,
+    "bytesPerDocument": 14.41792,
+    "tableBytes": 17113088
+  },
+  "writeControl": {
+    "method": "Index-maintenance control on in-memory databases. Candidate adapter only for schema/index DDL; identical direct driver INSERT/UPDATE statements with and without the same expression index. 5000 writes per transaction, fixture strings and batch arguments prepared in advance, alternating index/no-index timing order. Untimed DELETE/reset restores identical starting contents; 3 warmups then 11 measured transactions. Node cached prepared .run; libSQL batch. Not SDK writes and not a compiler overhead comparison. Both are local memory configurations; no disk fsync/network measured.",
+    "rowsPerTransaction": 5000,
+    "medianColumns": ["engine", "operation", "withoutIndexMs", "withIndexMs"],
+    "medians": [["node", "insert", 5.546386, 9.251038], ["node", "update", 6.496901, 14.10496], ["libsql", "insert", 76.447429, 90.47298], ["libsql", "update", 84.523515, 104.103934]],
+    "sampleColumns": ["engine", "operation", "withoutIndexMs", "withIndexMs"],
+    "samples": [
+      ["node", "insert", [5.448189, 5.835951, 5.546386, 5.520428, 5.613086, 6.126006, 5.493266, 5.780504, 5.411289, 6.13075, 5.533694], [8.850957, 8.938649, 9.251038, 8.875354, 9.07964, 9.284137, 11.097449, 9.237026, 9.289847, 10.088596, 9.76495]],
+      ["node", "update", [6.148076, 6.717813, 6.104891, 6.468448, 6.130149, 6.568698, 6.489739, 6.771473, 6.547377, 7.390152, 6.496901], [14.6937, 13.742045, 13.894935, 14.274345, 14.195275, 14.170829, 13.929046, 13.685299, 14.141886, 13.97839, 14.10496]],
+      ["libsql", "insert", [80.762821, 76.633428, 76.366657, 75.818383, 73.803837, 76.26207, 86.254923, 73.754723, 80.763101, 76.447429, 78.260693], [116.168582, 91.223096, 84.963673, 83.92329, 121.037697, 90.47298, 85.910615, 84.318383, 112.140191, 97.540327, 86.660151]],
+      ["libsql", "update", [84.523515, 110.319541, 90.166148, 135.971792, 82.807575, 109.43417, 80.036422, 86.348059, 81.368539, 81.445095, 78.181361], [96.801556, 97.731432, 106.450588, 108.18893, 102.536901, 104.103934, 100.365008, 140.345848, 101.056897, 105.840648, 106.699964]]
+    ]
+  },
+  "provenanceGateCompilerControl": {
+    "method": "Before-gate optimized compiler versus final physical-column-gated optimized compiler. Adapter tryJsonbContainment plus Kysely SQL compilation only, no SDK request or database execution. Contexts have 10 or 1000 ordinary tables, three columns each (id,title,body), target docs at first or last position. All metadata/objects preallocated. Same JSON literal {status:open} and SQL compiled each invocation. 1000 compilations/batch, alternating variants, 3 warmup batches then 11 measured batches. Median of batch time/1000 is reported in microseconds; this is not isolated table-lookup latency.",
+    "columns": ["tables", "position", "withoutGateMedianUs", "withGateMedianUs", "deltaUs"],
+    "rows": [[10, "first", 9.361443, 9.637738, 0.276295], [10, "last", 8.74664, 8.738608, -0.008032], [1000, "first", 8.338637, 8.404797, 0.06616], [1000, "last", 16.719518, 21.725118, 5.0056]]
+  },
+  "limits": ["In-memory SQLite/local libSQL only; no network, disk durability or concurrent workload measurement", "One controlled simple top-level string filter/projection/index; no general production-speedup claim", "The capped SELECT and unrestricted COUNT are separate work in an SDK head/count request", "Three warmups plus eleven measured rounds per metric; alternating variant order; CPU-heavy peer work excluded, shared-host variation remains"]
+}
