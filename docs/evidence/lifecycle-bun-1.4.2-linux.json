@@ -1,0 +1,305 @@
+{
+  "timestamp": "2026-10-04T21:25:55.062Z",
+  "source": {
+    "commit": "10b23d4eefb3a34afe57fc59b2dda8362c3bce8f",
+    "tree": "911f97aeb52ec5dd6dde63076d0053af58001265",
+    "packageTree": "c09097bbabccce17c0830275f32dc8743303bfe8",
+    "exampleTree": "6cf70dc3e07f7456ebe41f5b993cf27e2b8c3e1b",
+    "driverSha256": "e63cfa13cc256a20ee0fe281cbaa6721bff3d4f2e81b7fcdace0fa105cf7223b"
+  },
+  "runtime": {
+    "bun": "1.4.2",
+    "binarySha256": "a83d263767d839e4d2649ca8e35d07159c7afc99afdc96d731ced29e056dda0c",
+    "binaryBytes": 79500640,
+    "preinstalled": true
+  },
+  "machine": {
+    "os": "linux",
+    "architecture": "x64",
+    "kernel": "6.18.44",
+    "cpu": "AMD EPYC 9V74 80-Core Processor",
+    "logicalCpus": 9,
+    "totalMemoryBytes": 10451464192,
+    "resourceIsolation": "not controlled by this script"
+  },
+  "installation": {
+    "scope": "Example SDK dependencies; repository dependencies were already installed",
+    "ms": 6851.648,
+    "cacheBefore": "populated",
+    "installerSummary": "bun install v1.4.2 (744846f84)\n\n+ @supabase/supabase-js@2.117.2\n\n9 packages installed [6.85s]\nResolving dependencies\nResolved, downloaded and extracted [1]\nSaved lockfile",
+    "generatedLockSha256": "9e80d2755e114a9df1fb2ed618e8ed0d835f725c92cac192f1ac3d143e32aca5",
+    "osPageCacheCleared": false
+  },
+  "sampleCounts": {
+    "freshProvision": 1,
+    "restartsPerPolicy": 3,
+    "firstRequestsPerRestart": 1,
+    "subsequentRequestsPerRestart": 10
+  },
+  "footprint": {
+    "packageBytes": 5790277,
+    "applicationDependenciesBytes": 8079855,
+    "repositoryDependenciesBytes": 148099434,
+    "durableSqliteDirectoryBytes": 217088,
+    "storageDirectoryBytes": 33
+  },
+  "measurements": [
+    {
+      "label": "fresh-provision",
+      "policy": "oneshot",
+      "readyMs": 331.996,
+      "readyMemory": {
+        "rssBytes": 133079040,
+        "peakRssBytes": 138530816
+      },
+      "seedAndChecksMs": 756.895,
+      "checkCount": 16,
+      "finalMemory": {
+        "rssBytes": 150171648,
+        "peakRssBytes": 155357184
+      },
+      "exitCode": 0,
+      "shutdownMs": 11.339,
+      "pidGone": true,
+      "listenerClosed": true
+    },
+    {
+      "label": "oneshot-1",
+      "policy": "oneshot",
+      "readyMs": 252.985,
+      "readyMemory": {
+        "rssBytes": 123404288,
+        "peakRssBytes": 123404288
+      },
+      "firstFunctionMs": 67.849,
+      "subsequentFunctionMs": [
+        48.615,
+        44.646,
+        48.029,
+        45.627,
+        58.92,
+        58.43,
+        52.441,
+        56.815,
+        57.496,
+        51.283
+      ],
+      "medianSubsequentMs": 51.862,
+      "loadedMemory": {
+        "rssBytes": 144367616,
+        "peakRssBytes": 146161664
+      },
+      "checkCount": 13,
+      "finalMemory": {
+        "rssBytes": 149741568,
+        "peakRssBytes": 149741568
+      },
+      "exitCode": 0,
+      "shutdownMs": 8.315,
+      "pidGone": true,
+      "listenerClosed": true
+    },
+    {
+      "label": "oneshot-2",
+      "policy": "oneshot",
+      "readyMs": 255.721,
+      "readyMemory": {
+        "rssBytes": 126263296,
+        "peakRssBytes": 126263296
+      },
+      "firstFunctionMs": 63.584,
+      "subsequentFunctionMs": [
+        45.155,
+        64.579,
+        54.915,
+        47.223,
+        43.007,
+        46.835,
+        43.136,
+        44.541,
+        47.148,
+        41.96
+      ],
+      "medianSubsequentMs": 45.995,
+      "loadedMemory": {
+        "rssBytes": 146259968,
+        "peakRssBytes": 151711744
+      },
+      "checkCount": 13,
+      "finalMemory": {
+        "rssBytes": 152973312,
+        "peakRssBytes": 152973312
+      },
+      "exitCode": 0,
+      "shutdownMs": 11.849,
+      "pidGone": true,
+      "listenerClosed": true
+    },
+    {
+      "label": "oneshot-3",
+      "policy": "oneshot",
+      "readyMs": 279.945,
+      "readyMemory": {
+        "rssBytes": 130527232,
+        "peakRssBytes": 130527232
+      },
+      "firstFunctionMs": 65.963,
+      "subsequentFunctionMs": [
+        48.101,
+        49.059,
+        43.777,
+        51.412,
+        42.849,
+        46.092,
+        42.073,
+        50.71,
+        58.362,
+        44.881
+      ],
+      "medianSubsequentMs": 47.096,
+      "loadedMemory": {
+        "rssBytes": 145006592,
+        "peakRssBytes": 150822912
+      },
+      "checkCount": 13,
+      "finalMemory": {
+        "rssBytes": 147955712,
+        "peakRssBytes": 153452544
+      },
+      "exitCode": 0,
+      "shutdownMs": 8.37,
+      "pidGone": true,
+      "listenerClosed": true
+    },
+    {
+      "label": "per_worker-1",
+      "policy": "per_worker",
+      "readyMs": 285.978,
+      "readyMemory": {
+        "rssBytes": 132149248,
+        "peakRssBytes": 132149248
+      },
+      "firstFunctionMs": 62.988,
+      "subsequentFunctionMs": [
+        9.122,
+        6.945,
+        7.851,
+        8.298,
+        5.523,
+        6.801,
+        5.271,
+        5.355,
+        6.088,
+        13.361
+      ],
+      "medianSubsequentMs": 6.873,
+      "loadedMemory": {
+        "rssBytes": 139169792,
+        "peakRssBytes": 139186176
+      },
+      "checkCount": 13,
+      "finalMemory": {
+        "rssBytes": 140247040,
+        "peakRssBytes": 140247040
+      },
+      "exitCode": 0,
+      "shutdownMs": 11.691,
+      "pidGone": true,
+      "listenerClosed": true
+    },
+    {
+      "label": "per_worker-2",
+      "policy": "per_worker",
+      "readyMs": 278.933,
+      "readyMemory": {
+        "rssBytes": 128221184,
+        "peakRssBytes": 128221184
+      },
+      "firstFunctionMs": 61.183,
+      "subsequentFunctionMs": [
+        6.36,
+        5.493,
+        6.062,
+        7.692,
+        8.593,
+        4.876,
+        4.966,
+        5.834,
+        5.291,
+        12.572
+      ],
+      "medianSubsequentMs": 5.948,
+      "loadedMemory": {
+        "rssBytes": 132358144,
+        "peakRssBytes": 132358144
+      },
+      "checkCount": 13,
+      "finalMemory": {
+        "rssBytes": 132497408,
+        "peakRssBytes": 132497408
+      },
+      "exitCode": 0,
+      "shutdownMs": 11.886,
+      "pidGone": true,
+      "listenerClosed": true
+    },
+    {
+      "label": "per_worker-3",
+      "policy": "per_worker",
+      "readyMs": 250.988,
+      "readyMemory": {
+        "rssBytes": 131022848,
+        "peakRssBytes": 131022848
+      },
+      "firstFunctionMs": 60.718,
+      "subsequentFunctionMs": [
+        5.764,
+        4.978,
+        4.982,
+        5.275,
+        4.434,
+        5.574,
+        4.252,
+        4.58,
+        5.806,
+        10.378
+      ],
+      "medianSubsequentMs": 5.128,
+      "loadedMemory": {
+        "rssBytes": 134422528,
+        "peakRssBytes": 135733248
+      },
+      "checkCount": 13,
+      "finalMemory": {
+        "rssBytes": 137113600,
+        "peakRssBytes": 137113600
+      },
+      "exitCode": 0,
+      "shutdownMs": 9.729,
+      "pidGone": true,
+      "listenerClosed": true
+    }
+  ],
+  "restartChecks": [
+    "post-graduation-owned-write",
+    "same-password-signin",
+    "same-user-uuids",
+    "owned-record",
+    "caller-identity",
+    "private-file-bytes",
+    "other-user-read-denied",
+    "other-user-update-denied",
+    "other-user-function-denied",
+    "other-user-file-denied",
+    "forged-owner-denied",
+    "anonymous-function-denied",
+    "function-owned-options"
+  ],
+  "notes": [
+    "Linux /proc serving-PID RSS and VmHWM include native worker threads; exclude this driver. Unavailable memory readings are null.",
+    "Readiness is polled every 5 ms. Sign-in precedes the timed first function invocation.",
+    "oneshot creates a worker per call; its subsequent calls are not retained-worker warm latency.",
+    "Cache presence does not prove an install made no network requests. Footprints are apparent bytes with overlapping scopes, not an incremental disk requirement.",
+    "Seven completed serving-process exits and persisted auth/record/private-file checks; no crash-recovery, automatic wake, latency bound, hosted cost or comparative performance claim."
+  ]
+}
