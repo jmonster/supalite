@@ -1,0 +1,68 @@
+name: One-shot Storage upgrade qualification
+
+on:
+  create:
+  push:
+    branches: [verify/storage-local-once-20261004]
+
+permissions:
+  contents: read
+
+jobs:
+  storage-upgrade:
+    # The initial branch creation gets one create run, not a duplicate created push.
+    if: >-
+      github.repository == 'jmonster/supalite' &&
+      ((github.event_name == 'create' && github.event.ref_type == 'branch' && github.event.ref == 'verify/storage-local-once-20261004') ||
+       (github.event_name == 'push' && github.event.created == false && github.ref == 'refs/heads/verify/storage-local-once-20261004'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      DO_NOT_TRACK: '1'
+      SUPABASE_TELEMETRY_DISABLED: '1'
+      SUPABASE_ACCESS_TOKEN: ''
+      LITE_SUPABASE_CLI: npx --yes supabase@2.98.1
+      LITE_STORAGE_QUALIFICATION: '1'
+      LITE_QUALIFICATION_PACKAGE_TREE: e42b124a8713236cc3baf0d102d112683f1efe7f
+    steps:
+      - name: Check out the exact qualification event head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Use the prior successful Auth qualification Node version
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24.21.0'
+      - name: Verify candidate contents and install qualification dependencies
+        timeout-minutes: 4
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "LITE_STORAGE_QUALIFICATION_ROOT=$RUNNER_TEMP/storage-qualification-$GITHUB_RUN_ID" >> "$GITHUB_ENV"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD:upstream/lite-0.11.0)" = "$LITE_QUALIFICATION_PACKAGE_TREE"
+          npm ci --no-audit --no-fund
+          # Isolate the optional driver; do not re-resolve feature dependencies or manifests.
+          driver="$RUNNER_TEMP/storage-qualification-driver"
+          npm install --prefix "$driver" --no-save --ignore-scripts --package-lock=false --no-audit --no-fund postgres@3.4.8
+          test ! -e node_modules/postgres
+          ln -s "$driver/node_modules/postgres" node_modules/postgres
+          git diff --exit-code -- package.json package-lock.json upstream/lite-0.11.0
+          test "$(npx --yes supabase@2.98.1 --version)" = 2.98.1
+          node --check scripts/qualify-storage-local.mjs
+      - name: Qualify one real local upgrade
+        timeout-minutes: 13
+        run: node scripts/qualify-storage-local.mjs --run
+      - name: Stop any remaining synthetic fixture target
+        if: always()
+        timeout-minutes: 3
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          for target in "$RUNNER_TEMP/storage-qualification-$GITHUB_RUN_ID"/lite-storage-qualification-*/target; do
+            if test -f "$target/supabase/config.toml"; then
+              npx --yes supabase@2.98.1 stop --workdir "$target" --no-backup
+            fi
+          done
