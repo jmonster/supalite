@@ -18511,8 +18511,17 @@ async function co(e, t) {
       h = [];
     try {
       h = (await e.connection.exec(`SELECT * FROM ${c}`))?.rows ?? [];
-    } catch {
-      continue;
+    } catch (x) {
+      // WITH NO DATA materialized views are deliberately unscannable.
+      if (r === "postgres" && (x?.code ?? x?.cause?.code) === "55000") {
+        let $ = await e.connection.exec(
+          `SELECT 1 FROM pg_catalog.pg_matviews WHERE schemaname = ${Pn(l)} AND matviewname = ${Pn(a.name)} AND NOT ispopulated`,
+        ).catch(() => null);
+        if ($?.rows?.length) continue;
+      }
+      throw new Error(`Failed to read ${lo(l)}.${lo(a.name)} during data export: ${String(x)}`, {
+        cause: x,
+      });
     }
     if (h.length === 0) continue;
     let m =
