@@ -28,6 +28,12 @@ import { App } from "../upstream/lite-0.11.0/dist/index.js";
 
 Tests cover SDK insert, select, equality-filter, exact-count operations, export targets, and normal CLI behavior. They do not establish comprehensive compatibility.
 
+## HEAD response serialization
+
+Successful table/view HEAD responses skip final JSON/CSV formatting and UTF-8 encoding and omit `Content-Length`. Queries, row transformations, counts, validation, GET, RPC and error responses are unchanged.
+
+`bun run benchmark:head` prints raw timings for narrow and 4 KiB-wide JSON/CSV HEAD requests over 1,000 rows on local Node SQLite/libSQL. Run the same script in the baseline checkout for comparison. A prior paired run on Node 24.19.0 / AMD EPYC 9V74 measured 38–52% lower wide-response medians; narrow results were small and mixed (including a 7% slowdown). These are shared-machine microbenchmarks, not production throughput or database-work savings; hosted backends and heap allocation were not measured.
+
 ## License
 
 The upstream Apache-2.0 license is preserved in [LICENSE](LICENSE) and [upstream/lite-0.11.0/LICENSE](upstream/lite-0.11.0/LICENSE). See [NOTICE](NOTICE) for attribution.

@@ -16593,8 +16593,10 @@ async function Rh(t) {
     let z = 200;
     p && (z = st(e, "representation", u.appliedResolution, f));
     let be = h ? Rn(X[0]) : X[0],
-      Ge = vt(be),
-      wt = new TextEncoder().encode(Ge),
+      wt =
+        e.type === "query" && n?.head
+          ? null
+          : new TextEncoder().encode(vt(be)),
       Ir =
         n?.cardinality === "one"
           ? "application/vnd.pgrst.object+json"
@@ -16604,9 +16606,9 @@ async function Rh(t) {
           ? `${Ir};nulls=stripped; charset=utf-8`
           : `${Ir}; charset=utf-8`,
         "Content-Range": Qm(e, p, C, J),
-        "Content-Length": String(wt.byteLength),
       };
     return (
+      wt !== null && (Wa["Content-Length"] = String(wt.byteLength)),
       d && (Wa["Preference-Applied"] = d),
       n?.head
         ? new Response(null, { status: z, headers: Wa })
@@ -16649,8 +16651,10 @@ async function Rh(t) {
     let z = A;
     Ln = Ln.map((be) => ({ [z]: be }));
   }
-  let wi = m ? Io(Ln) : vt(an),
-    Ha = new TextEncoder().encode(wi),
+  let Ha =
+      e.type === "query" && n?.head
+        ? null
+        : new TextEncoder().encode(m ? Io(Ln) : vt(an)),
     Mt = {
       "Content-Type": m
         ? "text/csv; charset=utf-8"
@@ -16658,8 +16662,8 @@ async function Rh(t) {
           ? "application/vnd.pgrst.array+json;nulls=stripped; charset=utf-8"
           : "application/json; charset=utf-8",
       "Content-Range": me,
-      "Content-Length": String(Ha.byteLength),
     };
+  if (Ha !== null) Mt["Content-Length"] = String(Ha.byteLength);
   if (!p && e.from && g) {
     let z = Vm(`/${e.from}`, new URL(g).search);
     z && (Mt["Content-Location"] = z);
