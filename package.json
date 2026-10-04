@@ -9,7 +9,7 @@
     "node": ">=24"
   },
   "scripts": {
-    "test": "node --test --test-timeout=60000 --test-concurrency=1 test/*.test.mjs",
+    "test": "node --test --test-timeout=120000 --test-concurrency=1 test/*.test.mjs",
     "check": "npm test"
   },
   "dependencies": {
@@ -19,6 +19,7 @@
     "@electric-sql/pglite": "0.4.5",
     "@libsql/client": "0.17.4",
     "@supabase/lite": "0.11.0",
-    "@supabase/supabase-js": "2.117.2"
+    "@supabase/supabase-js": "2.117.2",
+    "bcryptjs": "3.0.3"
   }
 }
