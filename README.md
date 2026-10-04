@@ -28,6 +28,10 @@ import { App } from "../upstream/lite-0.11.0/dist/index.js";
 
 Tests cover SDK insert, select, equality-filter, exact-count operations, export targets, and normal CLI behavior. They do not establish comprehensive compatibility.
 
+## Bounded Node SQLite upgrades
+
+See [behavior, validation and limits](docs/streaming-upgrade.md). Run `bun run test` against the tracked implementation.
+
 ## License
 
 The upstream Apache-2.0 license is preserved in [LICENSE](LICENSE) and [upstream/lite-0.11.0/LICENSE](upstream/lite-0.11.0/LICENSE). See [NOTICE](NOTICE) for attribution.

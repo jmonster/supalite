@@ -1,4 +1,11 @@
 #!/usr/bin/env node
+import {
+  isNodeSqlite,
+  upgradeRows,
+  beginReadSnapshot,
+  disposeUserData,
+  sqlBatches,
+} from "./sqlite-streaming.js";
 import as, { statSync, readFileSync } from "node:fs";
 import * as Fe from "node:path";
 import Fe__default, { join } from "node:path";
@@ -14677,14 +14684,14 @@ var _x,
 function Rn(e) {
   return e instanceof Vi;
 }
-function Nd() {
+function Nd(flush = $n) {
   if (Pd) return;
   Pd = true;
   let e = process.exit.bind(process),
     t = false;
   process.exit = (n) => {
     let r = typeof n == "number" ? n : Number(process.exitCode ?? 0);
-    throw (t || ((t = true), $n(r !== 0).finally(() => e(r))), new Vi(r));
+    throw (t || ((t = true), flush(r !== 0).finally(() => e(r))), new Vi(r));
   };
 }
 var Vi,
@@ -17675,8 +17682,7 @@ async function xh(e) {
     }
     let f = u.map((h) => `"${h.name}"`).join(", ");
     try {
-      let m = (await e.connection.exec(`SELECT ${f} FROM ${a}`))?.rows ?? [];
-      for (let d of m)
+      for await (let d of upgradeRows(e.connection, `SELECT ${f} FROM ${a}`))
         for (let g of u) {
           let y = d[g.name];
           if (Sh(g.type) && !dT(y)) {
@@ -18485,67 +18491,81 @@ function LT(e, t, n) {
   let r = `${lo(e)}.${lo(t)}`;
   return `SELECT setval(pg_get_serial_sequence(${Pn(r)}, ${Pn(n)}), COALESCE((SELECT MAX(${lo(n)}) FROM ${r}), 1));`;
 }
-async function co(e, t) {
-  let n = await e.connection.introspect(),
-    r = e.connection.dialect,
-    s = await io(t),
-    i = NT(
-      n.tables.filter((a) => !PT.has(ao(a.schema))),
-      n.foreign_keys,
-    ),
-    o = [];
-  for (let a of i) {
-    let l = ao(a.schema),
-      c =
-        r === "sqlite"
-          ? l === "public"
-            ? `"${a.name}"`
-            : `"${l}.${a.name}"`
-          : `"${l}"."${a.name}"`,
-      p = n.columns.filter((x) => x.table === a.name && ao(x.schema) === l),
-      u = s.get(Xr(l, a.name)),
-      f = p.filter((x) => {
-        let $ = u?.get(x.name);
-        return $ ? !$.context.isGenerated : !x.generated && !x.is_generated;
-      }),
-      h = [];
-    try {
-      h = (await e.connection.exec(`SELECT * FROM ${c}`))?.rows ?? [];
-    } catch {
-      continue;
-    }
-    if (h.length === 0) continue;
-    let m =
-      typeof e.connection.deserializeRow == "function"
-        ? e.connection.deserializeRow.bind(e.connection)
-        : (x) => x;
-    h = h.map((x) => {
-      let $ = u ? u.deserializeRow(x) : x;
-      return m($);
-    });
-    let d = f.map((x) => x.name),
-      g = new Map(
-        f.map((x) => {
-          let $ = u?.get(x.name);
-          return [x.name, $ ? Lh($) : (x.pg_type ?? x.type)];
-        }),
+async function co(e, t, upgradeOptions = {}) {
+  let snapshot = isNodeSqlite(e.connection)
+    ? beginReadSnapshot(e.connection, upgradeOptions)
+    : null;
+  try {
+    let n = await e.connection.introspect(),
+      r = e.connection.dialect,
+      s = await io(t),
+      i = NT(
+        n.tables.filter((a) => !PT.has(ao(a.schema))),
+        n.foreign_keys,
       ),
-      y = [];
-    for (let x of h) {
-      let $ = d.map((C) => Oh(x[C], g.get(C)));
-      y.push(
-        `INSERT INTO "${l}"."${a.name}" (${d.map((C) => `"${C}"`).join(", ")}) VALUES (${$.join(", ")}) ON CONFLICT DO NOTHING`,
-      );
+      o = [];
+    for (let a of i) {
+      let l = ao(a.schema),
+        c =
+          r === "sqlite"
+            ? l === "public"
+              ? `"${a.name}"`
+              : `"${l}.${a.name}"`
+            : `"${l}"."${a.name}"`,
+        p = n.columns.filter((x) => x.table === a.name && ao(x.schema) === l),
+        u = s.get(Xr(l, a.name)),
+        f = p.filter((x) => {
+          let $ = u?.get(x.name);
+          return $ ? !$.context.isGenerated : !x.generated && !x.is_generated;
+        }),
+        h = [];
+      try {
+        h = snapshot
+          ? snapshot.rows(`SELECT * FROM ${c}`)
+          : ((await e.connection.exec(`SELECT * FROM ${c}`))?.rows ?? []);
+      } catch (error) {
+        if (snapshot) throw error;
+        continue;
+      }
+      if (h.length === 0) continue;
+      let m =
+        typeof e.connection.deserializeRow == "function"
+          ? e.connection.deserializeRow.bind(e.connection)
+          : (x) => x;
+      let decodeRow = (x) => {
+        let $ = u ? u.deserializeRow(x) : x;
+        return m($);
+      };
+      if (!snapshot) h = h.map(decodeRow);
+      let d = f.map((x) => x.name),
+        g = new Map(
+          f.map((x) => {
+            let $ = u?.get(x.name);
+            return [x.name, $ ? Lh($) : (x.pg_type ?? x.type)];
+          }),
+        ),
+        generate = async function* () {
+          for await (let raw of h) {
+            let x = snapshot ? decodeRow(raw) : raw;
+            let $ = d.map((C) => Oh(x[C], g.get(C)));
+            yield `INSERT INTO "${l}"."${a.name}" (${d.map((C) => `"${C}"`).join(", ")}) VALUES (${$.join(", ")}) ON CONFLICT DO NOTHING`;
+          }
+        },
+        y = snapshot ? snapshot.statements(h.length, generate) : [];
+      if (!snapshot) for await (let statement of generate()) y.push(statement);
+      let _ = f
+        .filter((x) => {
+          let $ = u?.get(x.name);
+          return $ ? $.context.isSerial : OT(x);
+        })
+        .map((x) => LT(l, a.name, x.name));
+      o.push({ schema: l, table: a.name, inserts: y, sequenceResets: _ });
     }
-    let _ = f
-      .filter((x) => {
-        let $ = u?.get(x.name);
-        return $ ? $.context.isSerial : OT(x);
-      })
-      .map((x) => LT(l, a.name, x.name));
-    o.push({ schema: l, table: a.name, inserts: y, sequenceResets: _ });
+    return snapshot ? snapshot.attach(o) : o;
+  } catch (error) {
+    await disposeUserData(snapshot, error);
+    throw error;
   }
-  return o;
 }
 var PT,
   Nh,
@@ -18682,31 +18702,41 @@ async function Ih(e, t) {
       }
     }
     let h = await co(e, t);
-    for (let m of h) {
-      for (let d = 0; d < m.inserts.length; d++) {
-        l++;
-        try {
-          await r.exec(m.inserts[d]);
-        } catch (g) {
-          s.push({
-            phase: "data",
-            label: `${m.schema}.${m.table} row ${d + 1}/${m.inserts.length}`,
-            statement: m.inserts[d],
-            error: String(g),
-          });
+    let dataError;
+    try {
+      for (let m of h) {
+        let d = 0;
+        for await (let statement of m.inserts) {
+          l++;
+          d++;
+          try {
+            await r.exec(statement);
+          } catch (g) {
+            s.push({
+              phase: "data",
+              label: `${m.schema}.${m.table} row ${d}/${m.inserts.length}`,
+              statement,
+              error: String(g),
+            });
+          }
         }
+        for (let d = 0; d < m.sequenceResets.length; d++)
+          try {
+            await r.exec(m.sequenceResets[d]);
+          } catch (g) {
+            s.push({
+              phase: "data",
+              label: `${m.schema}.${m.table} sequence reset ${d + 1}/${m.sequenceResets.length}`,
+              statement: m.sequenceResets[d],
+              error: String(g),
+            });
+          }
       }
-      for (let d = 0; d < m.sequenceResets.length; d++)
-        try {
-          await r.exec(m.sequenceResets[d]);
-        } catch (g) {
-          s.push({
-            phase: "data",
-            label: `${m.schema}.${m.table} sequence reset ${d + 1}/${m.sequenceResets.length}`,
-            statement: m.sequenceResets[d],
-            error: String(g),
-          });
-        }
+    } catch (error) {
+      dataError = error;
+      throw error;
+    } finally {
+      await disposeUserData(h, dataError);
     }
   } finally {
     await r.close().catch(() => {});
@@ -18941,10 +18971,27 @@ async function qT(e, t) {
         ? s.map((d) => `${Zt(d)} AS ${Zt(`id_${d}`)}`)
         : [`rowid AS ${Zt("id_rowid")}`]),
       `${Zt(t.column)} AS ${Zt("__lite_value")}`,
-    ].join(", "),
-    l;
+    ].join(", ");
+  let c = 0,
+    p = "pass",
+    u = 0,
+    f = null,
+    h,
+    m = [];
   try {
-    l = await e.connection.exec(`SELECT ${a} FROM ${r}`);
+    for await (let d of upgradeRows(e.connection, `SELECT ${a} FROM ${r}`)) {
+      c++;
+      let g = t.field.validateStorage(d.__lite_value);
+      if (
+        ((p = UT(p, g.status)),
+        g.status !== "pass" &&
+          (u++, (f ??= g.message), (h ??= g.action), m.length < DT))
+      ) {
+        let y = {};
+        for (let _ of i) y[_] = d[`id_${_}`];
+        m.push({ id: y, raw_value: d.__lite_value });
+      }
+    }
   } catch (d) {
     return {
       field: kc(t),
@@ -18957,29 +19004,11 @@ async function qT(e, t) {
         "Apply the declared schema to the local Supalite database, then rerun the dry-run audit before upgrading.",
     };
   }
-  let c = l?.rows ?? [],
-    p = "pass",
-    u = 0,
-    f = null,
-    h,
-    m = [];
-  for (let d of c) {
-    let g = t.field.validateStorage(d.__lite_value);
-    if (
-      ((p = UT(p, g.status)),
-      g.status !== "pass" &&
-        (u++, (f ??= g.message), (h ??= g.action), m.length < DT))
-    ) {
-      let y = {};
-      for (let _ of i) y[_] = d[`id_${_}`];
-      m.push({ id: y, raw_value: d.__lite_value });
-    }
-  }
   return {
     field: kc(t),
     pg_type: Nc(t.field),
     status: p,
-    rows_checked: c.length,
+    rows_checked: c,
     ...(u > 0 ? { affected_rows: u } : {}),
     message: f,
     ...(m.length > 0 ? { samples: m } : {}),
@@ -19057,9 +19086,12 @@ async function Kh(e, t, n = {}) {
       let p = r[c] ?? 1;
       if (l.length === 1 || p === 1) {
         for (let u of l) {
+          n.signal?.throwIfAborted();
           try {
             await e.runSql(u);
+            n.signal?.throwIfAborted();
           } catch (f) {
+            n.signal?.throwIfAborted();
             s.push({ statement: u, error: String(f) });
           }
           (i++, n.onProgress?.(i, o));
@@ -19069,9 +19101,13 @@ async function Kh(e, t, n = {}) {
       for (let u = 0; u < l.length; u += p) {
         let f = l.slice(u, u + p),
           h = HT(f);
+        n.signal?.throwIfAborted();
         try {
-          (await e.runSql(h), (i += f.length), n.onProgress?.(i, o));
-        } catch {
+          await e.runSql(h);
+          n.signal?.throwIfAborted();
+          ((i += f.length), n.onProgress?.(i, o));
+        } catch (error) {
+          n.signal?.throwIfAborted();
           await a(f, c + 1);
         }
       }
@@ -19084,10 +19120,14 @@ var Vh,
       /^(INSERT INTO [^(]+\([^)]+\)\s*VALUES\s*)(\(.*\))(\s*ON CONFLICT[\s\S]*)?$/i;
   });
 async function GT(e, t, n, r) {
+  r.signal?.throwIfAborted();
   r.onSql?.(t, n);
+  r.signal?.throwIfAborted();
   try {
     await e.runSql(t);
+    r.signal?.throwIfAborted();
   } catch (s) {
+    r.signal?.throwIfAborted();
     throw new Error(
       `Failed SQL (${n}): ${String(s)}
 ${t}`,
@@ -19096,12 +19136,30 @@ ${t}`,
   }
 }
 async function Nn(e, t, n, r, s = {}) {
+  r.signal?.throwIfAborted();
   if (n.length === 0) return;
   r.onBatchStart?.(t, n.length);
-  let i = await Kh(e, n, {
-    sizes: s.sizes ?? r.batchSizes,
-    onProgress: (o, a) => r.onBatchProgress?.(t, o, a),
-  });
+  let i = [];
+  if (Array.isArray(n)) {
+    i = await Kh(e, n, {
+      sizes: s.sizes ?? r.batchSizes,
+      signal: r.signal,
+      onProgress: (o, a) => r.onBatchProgress?.(t, o, a),
+    });
+  } else {
+    let done = 0;
+    for await (let batch of sqlBatches(n)) {
+      i.push(
+        ...(await Kh(e, batch, {
+          sizes: s.sizes ?? r.batchSizes,
+          signal: r.signal,
+          onProgress: (o) => r.onBatchProgress?.(t, done + o, n.length),
+        })),
+      );
+      done += batch.length;
+    }
+  }
+  r.signal?.throwIfAborted();
   if (i.length > 0)
     throw (
       r.onBatchFailure?.(t, i),
@@ -19109,7 +19167,21 @@ async function Nn(e, t, n, r, s = {}) {
     );
   r.onBatchEnd?.(t, n.length, s.unit ?? "rows");
 }
+export function createUpgradeSpinner() {
+  it();
+  let controller = new AbortController();
+  return Object.assign(
+    hc({
+      onCancel: () => {
+        controller.abort(new Error("Upgrade cancelled"));
+        process.exit(130);
+      },
+    }),
+    { signal: controller.signal },
+  );
+}
 async function Lc(e, t, n, r) {
+  r.signal?.throwIfAborted();
   r.onSchemaStart?.(n.statements.length);
   let s = 0;
   for (let c of n.files) {
@@ -19125,6 +19197,7 @@ async function Lc(e, t, n, r) {
       r.onSchemaProgress?.(s, n.statements.length));
   }
   r.onSchemaEnd?.(n.statements.length);
+  r.signal?.throwIfAborted();
   let i = await ro(e, { target: r.authTarget ?? "supabase" }),
     o = {
       users: i.users.length,
@@ -19141,27 +19214,40 @@ async function Lc(e, t, n, r) {
         r.onSkip?.(
           `Skipped ${i.sessions.length} sessions and ${i.refresh_tokens.length} refresh tokens (existing tokens will be invalidated).`,
         ));
-  let a = await co(e, n),
-    l = a.filter((c) => c.inserts.length > 0);
-  l.length === 0 && r.onSkip?.("No user data rows to migrate.");
-  for (let c of l)
-    await Nn(t, `Migrating ${c.schema}.${c.table}`, c.inserts, r);
-  for (let c of l)
-    await Nn(
-      t,
-      `Resetting ${c.schema}.${c.table} sequences`,
-      c.sequenceResets,
-      r,
-      { sizes: [1], unit: "statements" },
-    );
-  if (r.syncAuthConfig !== false && t.updateAuthConfig) {
-    let c = Gh(e.config);
-    Object.keys(c).length > 0 &&
-      (r.onAuthConfigStart?.(),
-      await t.updateAuthConfig(c),
-      r.onAuthConfigEnd?.());
+  let a = await co(e, n, { signal: r.signal });
+  let dataError;
+  try {
+    let l = a.filter((c) => c.inserts.length > 0);
+    l.length === 0 && r.onSkip?.("No user data rows to migrate.");
+    for (let c of l)
+      await Nn(t, `Migrating ${c.schema}.${c.table}`, c.inserts, r);
+    await disposeUserData(a);
+    for (let c of l)
+      await Nn(
+        t,
+        `Resetting ${c.schema}.${c.table} sequences`,
+        c.sequenceResets,
+        r,
+        { sizes: [1], unit: "statements" },
+      );
+    if (r.syncAuthConfig !== false && t.updateAuthConfig) {
+      let c = Gh(e.config);
+      Object.keys(c).length > 0 &&
+        (r.signal?.throwIfAborted(),
+        r.onAuthConfigStart?.(),
+        r.signal?.throwIfAborted(),
+        await t.updateAuthConfig(c),
+        r.signal?.throwIfAborted(),
+        r.onAuthConfigEnd?.());
+    }
+    r.signal?.throwIfAborted();
+    return { schemaStatements: n.statements.length, auth: o, dataTables: a };
+  } catch (error) {
+    dataError = error;
+    throw error;
+  } finally {
+    await disposeUserData(a, dataError);
   }
-  return { schemaStatements: n.statements.length, auth: o, dataTables: a };
 }
 var Xh = b(() => {
   Wh();
@@ -19868,7 +19954,7 @@ Rehearsing upgrade against in-memory pglite...`),
                   let H = Fe__default.relative(process.cwd(), F) || F;
                   j = `Your project's supabase/config.toml was rewritten in place for the local Supabase CLI. The original was backed up to ${H}. To resume supalite dev (bun run dev), restore it: cp ${H} supabase/config.toml (or git checkout supabase/config.toml). Pass --local-dir <separate-dir> next time to keep the local stack isolated.`;
                 }
-                let w = hc(),
+                let w = createUpgradeSpinner(),
                   S,
                   I;
                 try {
@@ -19884,6 +19970,7 @@ Rehearsing upgrade against in-memory pglite...`),
                         migrateSessions: !1,
                         authTarget: "supabase",
                         syncAuthConfig: !1,
+                        signal: w.signal,
                         onSql: (H, ne) => {
                           t.verbose &&
                             console.log(
@@ -19990,7 +20077,7 @@ ${j}`),
                 }),
                 y = g.migrateSessions,
                 _ = pC(),
-                x = hc();
+                x = createUpgradeSpinner();
               x.start("Creating Supabase project");
               let $ = await u.createProject({
                   organization_id: f.id,
@@ -20042,6 +20129,7 @@ ${j}`),
                       {
                         migrateSessions: y,
                         authTarget: "supabase",
+                        signal: x.signal,
                         onSql: (R, F) => {
                           t.verbose &&
                             console.log(
@@ -20720,13 +20808,17 @@ function isCliEntry() {
     return false;
   }
 }
-if (isCliEntry()) {
+export function installCliProcessHandlers({ flush = $n } = {}) {
+  Nd(flush);
   process.on("unhandledRejection", (e) => {
     if (!Rn(e)) throw e;
   });
   process.on("uncaughtException", (e) => {
-    Rn(e) || (console.error(e), $n(true, e).finally(() => process.exit(1)));
+    Rn(e) || (console.error(e), flush(true, e).finally(() => process.exit(1)));
   });
+}
+if (isCliEntry()) {
+  installCliProcessHandlers();
   NC()
     .then(null)
     .catch(async (e) => {

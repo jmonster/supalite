@@ -1,0 +1,53 @@
+{
+  "scope": "Historical native Node SQLite measurements; not a fresh qualification of the current Bun branch",
+  "recordedAt": "2026-10-04T00:44:53.792Z",
+  "runtime": {
+    "node": "v24.19.0",
+    "pglite": "0.4.5",
+    "platform": "linux",
+    "architecture": "x64"
+  },
+  "measuredArtifacts": {
+    "baselineCli": "b4646e383c5de5962afb49adbb4eb20ac6b58bef17c64c5a7c7e80d731178600",
+    "streamingCli": "03bb09dd92794f71c0fb98e660c62a14c71cca5a5fbcec6019f9ca6c05d7bf0c",
+    "streamingHelper": "ed978477ec6aa6c382d63e823fe01aa994103bb5b2804f962ae750eccf08ad84"
+  },
+  "workload": {
+    "data": "Highly compressible synthetic text and JSON, with row-specific prefixes and no Auth rows",
+    "small": {
+      "rows": 384,
+      "payloadMiB": 3
+    },
+    "large": {
+      "rows": 12288,
+      "payloadMiB": 96
+    },
+    "target": "Local in-memory PGlite; no hosted target"
+  },
+  "result": {
+    "dataVerified": "Direct cases preserved source data and matched target rows/checksums",
+    "temporarySqlExportBytes": 0,
+    "firstTargetWriteAfterMaterializedRows": 32,
+    "firstWriteLimit": "COUNT queries had already visited each source table",
+    "largeWorkload128MiBOldSpace": "All four stock invocations exhausted the heap; all four direct invocations completed",
+    "memoryLimit": "V8 old-space is not total heap, RSS or deployment RAM; process RSS remained roughly 1.0\u20131.4 GiB",
+    "timingLimit": "One observation per case, stock observed earlier, uncontrolled warm caches; no speed or billing conclusion",
+    "largeWorkload1024MiBOldSpace": "Both stock and direct completed; direct CLI and apply timings were slower in these single observations"
+  },
+  "currentBunChecks": {
+    "runner": "Bun 1.4.2",
+    "passed": 5,
+    "intentionallySkippedNativeNodeCases": 41,
+    "limit": "Bun uses the existing materializing path; these checks do not requalify native streaming"
+  },
+  "reproduction": {
+    "install": "bun install --frozen-lockfile",
+    "nativeQuickBenchmark": "mkdir -p .generated && node scripts/benchmark-streaming.mjs --quick --heap=1024",
+    "nativeFullBenchmark": "mkdir -p .generated && node scripts/benchmark-streaming.mjs --heap=1024",
+    "limit": "Benchmark requires actual Node with native node:sqlite and pinned PGlite 0.4.5; the retained scripts generate new observations, not the historical hashes"
+  },
+  "historicalEvidence": {
+    "rawMeasurements": "https://github.com/jmonster/supalite/blob/0d28115de9bdc614535c22493dcc6b122ff10082/reports/streaming-scale.json",
+    "runtimeCompatibility": "https://github.com/jmonster/supalite/blob/0d28115de9bdc614535c22493dcc6b122ff10082/reports/runtime-compatibility.json"
+  }
+}
