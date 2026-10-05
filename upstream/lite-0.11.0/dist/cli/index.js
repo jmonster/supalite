@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { isUpgradeMigrationMetadata } from "./upgrade-migration-metadata.js";
 import as, { statSync, readFileSync } from "node:fs";
 import * as Fe from "node:path";
 import Fe__default, { join } from "node:path";
@@ -18490,7 +18491,9 @@ async function co(e, t) {
     r = e.connection.dialect,
     s = await io(t),
     i = NT(
-      n.tables.filter((a) => !PT.has(ao(a.schema))),
+      n.tables.filter(
+        (a) => !PT.has(ao(a.schema)) && !isUpgradeMigrationMetadata(a),
+      ),
       n.foreign_keys,
     ),
     o = [];
