@@ -140,7 +140,7 @@ storage-api-compatible endpoints at `/storage/v1/*` (`app/src/storage/`), with p
 
 | Capability | Status | Effort | Blocker | Notes |
 |------------|:------:|:------:|:-------:|-------|
-| Self-service upgrade | ⚠️ | `L` | `-` | Replays authoritative Postgres SQL in recorded history order followed by pending-file order after an Auth-first PGlite rehearsal, then migrates Auth and application data to hosted or local Supabase. Migration-only projects do not need applied-file mirrors; declarative-only projects must generate a pending migration first. Native bare-SQLite migrations, Storage data, and Realtime config do not migrate yet. See [STATUS.md](https://github.com/supabase/lite/blob/HEAD/STATUS.md#upgrade-to-supabase). |
+| Self-service upgrade | ⚠️ | `L` | `-` | Replays authoritative Postgres SQL in recorded history order followed by pending-file order after an Auth-first PGlite rehearsal, then migrates Auth and application data to hosted or local Supabase. Migration-only projects do not need applied-file mirrors; declarative-only projects must generate a pending migration first. Quiescent `sqlite-postgres` filesystem Storage can migrate to a fresh local target; hosted/custom-adapter Storage, native bare-SQLite migrations and Realtime config remain unsupported. See [Storage limits](UPGRADE.md#local-filesystem-storage). |
 
 ---
 
