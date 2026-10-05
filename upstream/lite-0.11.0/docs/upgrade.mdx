@@ -8,7 +8,7 @@ import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
 Supabase Lite is a starting point, not an end state. `lite upgrade` migrates a local Supabase Lite project (schema, `auth.users`/`auth.identities`, application table data, optionally sessions) to a hosted or local Supabase project.
 
 <Aside type="caution">
-Storage and Realtime migration are not implemented yet. If either is enabled, the command warns and continues with schema/auth/data migration only.
+Filesystem Storage can migrate only from a quiescent `sqlite-postgres` project into a fresh, separate local target using `EXPERIMENTAL_STORAGE=1` and `--storage-quiescent`. Existing Storage rows/files are checked even when Storage is disabled; unsupported routes fail preflight rather than silently skipping them. Realtime config still only warns. See [Storage migration limits](../UPGRADE.md#local-filesystem-storage).
 </Aside>
 
 ## Quick start
@@ -83,7 +83,7 @@ Use `--local-dir` to target a separate directory instead and leave the project's
 lite upgrade --target local --local-dir ../my-local-supabase --force --no-migrate-sessions
 ```
 
-The local target drives the Supabase CLI via `bunx supabase@2.98.1` (override with `LITE_SUPABASE_CLI`), pins `db.major_version = 15`, enables Studio, and disables services not needed for verification (mailpit, realtime, storage, imgproxy, edge runtime, analytics, supavisor). It leaves the local stack running after a successful upgrade; stop it with `bunx supabase@2.98.1 stop --workdir <dir> --no-backup`.
+The local target drives the Supabase CLI via `bunx supabase@2.98.1` (override with `LITE_SUPABASE_CLI`), pins `db.major_version = 15`, enables Studio, enables Storage when migrating persisted buckets/files, and disables other services not needed for verification (mailpit, realtime, imgproxy, edge runtime, analytics, supavisor). It leaves the local stack running after a successful upgrade; stop it with `bunx supabase@2.98.1 stop --workdir <dir> --no-backup`.
 </TabItem>
 </Tabs>
 
@@ -104,7 +104,8 @@ The scratch PGlite database creates the packaged Auth schema before it replays p
 
 ## What doesn't carry over cleanly
 
-- **Storage and Realtime**: not migrated. The command warns and continues.
+- **Storage**: only the [bounded local filesystem route](../UPGRADE.md#local-filesystem-storage) is supported. Hosted targets, custom adapters/S3 and unsupported source state fail preflight. Regenerate signed URLs and sign in again at the new endpoint.
+- **Realtime**: config is not migrated; the command warns and continues.
 - **SQLite-only RLS behavior**: SQLite enforces RLS by rewriting the PostgREST query AST at the application layer (see [RLS](/database/rls)); Postgres uses native RLS. Policies that only work because of the SQLite rewrite (or that hit a [known SQLite RLS limitation](/database/rls)) need re-checking against native Postgres semantics after upgrade.
 - **Unsupported SQLite-side features**: range types, quantified comparisons (`eq(any)`, etc.), `rpc()`, multi-schema access, and full regex all behave differently or not at all on SQLite (see [Compatibility](/compatibility)). Code written around those gaps may now have real Postgres equivalents available and worth adopting.
 - **Sessions**: preserved on hosted targets only, via `--migrate-sessions`, by importing `auth.jwt_secret` as a Supabase HS256 signing key. The local target does not support this yet; users re-authenticate after a local upgrade.

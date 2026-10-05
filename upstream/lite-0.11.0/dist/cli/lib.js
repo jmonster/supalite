@@ -3,6 +3,7 @@ import * as le from "node:path";
 import le__default from "node:path";
 import Bs from "node:os";
 import Mt from "node:fs";
+import { Readable } from "node:stream";
 import { createClient } from "@supabase/supabase-js";
 import {
   ensureVar,
@@ -5163,7 +5164,9 @@ var Jt = class {
       if (o.mtime <= u)
         return { httpStatusCode: 304, metadata: this.buildMetadata(o, a, n) };
     }
-    let c,
+    let c = Readable.toWeb((await W.open(s, "r")).createReadStream(), {
+        strategy: { highWaterMark: 65536, size: (chunk) => chunk.byteLength },
+      }),
       l,
       p = o.size,
       f = 200;
@@ -5174,10 +5177,9 @@ var Jt = class {
           d = u[2] ? Number.parseInt(u[2], 10) : o.size - 1;
         ((p = d - m + 1),
           (l = `bytes ${m}-${d}/${o.size}`),
-          (f = 206),
-          (c = (await W.open(s, "r")).readableWebStream()));
-      } else c = (await W.open(s, "r")).readableWebStream();
-    } else c = (await W.open(s, "r")).readableWebStream();
+          (f = 206));
+      }
+    }
     return {
       httpStatusCode: f,
       metadata: {
