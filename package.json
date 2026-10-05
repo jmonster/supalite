@@ -10,6 +10,9 @@
   },
   "scripts": {
     "test": "node --test --test-timeout=60000 --test-concurrency=1 test/*.test.mjs",
+    "test:core": "node --test --test-timeout=60000 test/compiler.test.mjs",
+    "demo": "node examples/catalog.mjs",
+    "benchmark": "node scripts/benchmark.mjs",
     "check": "npm test"
   },
   "dependencies": {

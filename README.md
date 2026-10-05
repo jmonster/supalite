@@ -2,6 +2,14 @@
 
 An editable baseline of the published `@supabase/lite` **0.11.0** package. Main retains the original package's functionality; feature changes remain on their respective branches until merged.
 
+## JSONB containment
+
+SQLite JSONB filters support `.contains()` and `.containedBy()` on nested objects and arrays, including counts, pagination, updates, and deletes. This applies to columns declared as `jsonb`; PostgreSQL and SQL-array operators keep their existing behavior.
+
+Pass object operands directly, but serialize JSON arrays and scalars, for example `.contains('body', JSON.stringify([{ color: 'red', size: 'M' }]))`. Supabase-js encodes a directly supplied JavaScript array as a PostgreSQL array literal.
+
+Run `npm run demo` for the [catalog example](examples/catalog.mjs), `npm run test:core` for compiler differential tests, and `npm run benchmark` for [local measurements](docs/performance.md). See [design and limits](docs/design-and-porting.md) for supported behavior and runtime limitations.
+
 ## Repeated filters
 
 Repeated filters on one column are combined with AND. For example, `.neq('category', 'fruit').neq('category', 'vegetable')` excludes both categories. This also preserves repeated negated filters and existing logical groups on Node SQLite, libSQL, and PGlite; `npm test` includes regressions across all three adapters.

@@ -25,7 +25,7 @@ Anchors below point to the corresponding STATUS.md section. If a limitation here
 ## supabase-js (SQLite path)
 
 - `rpc()` → not supported. Use a regular HTTP endpoint for custom logic. See [Control & Specialized](https://github.com/supabase/lite/blob/HEAD/STATUS.md#control--specialized).
-- `contains` / `containedBy` / `overlaps` → partial. Arrays of scalars and shallow objects work; arrays of objects and nested objects do not. See [Array & JSON Filters](https://github.com/supabase/lite/blob/HEAD/STATUS.md#array--json-filters).
+- Data API `contains` / `containedBy` on `jsonb` columns support nested objects and arrays within [filter, numeric and runtime limits](../../docs/design-and-porting.md#limits-and-input-boundary). Plain `json`, SQL-array operators and `overlaps` retain their existing behavior; direct SQLite SQL does not gain PostgreSQL JSONB operators.
 - `textSearch` (fts/plfts/phfts/wfts) → not implemented on SQLite. See [Full-Text Search](https://github.com/supabase/lite/blob/HEAD/STATUS.md#full-text-search).
 - `regexMatch` / `regexIMatch` → partial. Only simple anchored/literal patterns (`^foo`, `bar$`, substrings) work; classes, quantifiers and alternation fail. See [Regex](https://github.com/supabase/lite/blob/HEAD/STATUS.md#regex).
 - Range operators (`rangeGt`, …) and quantified comparisons (`eq(any)`, …) → not implemented on SQLite. See [Range Operators](https://github.com/supabase/lite/blob/HEAD/STATUS.md#range-operators) and [Quantified Comparison Operators](https://github.com/supabase/lite/blob/HEAD/STATUS.md#quantified-comparison-operators).

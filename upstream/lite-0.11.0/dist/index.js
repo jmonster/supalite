@@ -1,4 +1,9 @@
 import { mergeFilter } from "./query/merge-filters.js";
+import {
+  markJsonbLiteral,
+  tryJsonbContainment as compileJsonbContainment,
+  assertJsonbQueryLimits,
+} from "./query/lite-adapter.js";
 import * as _t from "jsonv-ts";
 import { s } from "jsonv-ts";
 import { Deparser, QuoteUtils } from "pgsql-deparser";
@@ -9882,7 +9887,8 @@ function Rl(t) {
   if (n && a === "$in") return { $notIn: xl(a, i) };
   if (n && a === "$is") return { $isNot: xl(a, i) };
   let u = a === "$textSearch" ? RS(i, l, c) : xl(a, i);
-  return n ? { $not: { [a]: u } } : { [a]: u };
+  const operators = markJsonbLiteral({ [a]: u }, a, i);
+  return n ? { $not: operators } : operators;
 }
 function xl(t, e) {
   if (t === "$in" || t === "$notIn") {
@@ -11238,6 +11244,14 @@ function ke(t, e, n) {
       let o = i,
         a = JS(s);
       for (let [l, c] of Object.entries(o)) {
+        const jsonb = tryJsonbContainment(s, l, c, n, o, {
+          parsePath: _n,
+          reference: fe,
+        });
+        if (jsonb) {
+          r.push(jsonb);
+          continue;
+        }
         if (xt(c)) {
           let u = rs[l];
           if (!u) throw new Error(`Unsupported ref operator: ${l}`);
@@ -11248,8 +11262,13 @@ function ke(t, e, n) {
         }
         if (l === "$not") {
           let u = c;
-          for (let [f, d] of Object.entries(u))
-            if (a) r.push(t.not(cp(s, f, d, n)));
+          for (let [f, d] of Object.entries(u)) {
+            const jsonb = tryJsonbContainment(s, f, d, n, u, {
+              parsePath: _n,
+              reference: fe,
+            });
+            if (jsonb) r.push(t.not(jsonb));
+            else if (a) r.push(t.not(cp(s, f, d, n)));
             else {
               let p = op(s, f, d, n);
               if (p) {
@@ -11270,6 +11289,7 @@ function ke(t, e, n) {
               if (!g) throw new Error(`Unsupported operator: ${f}`);
               r.push(t.not(g(t, En(s, n), d)));
             }
+          }
         } else if (io(c)) {
           let u = is(c, n),
             f = n.operators[l];
@@ -14253,14 +14273,45 @@ function DE(t) {
 function ne(t, e = "postgres", n) {
   let r = DE(e),
     s = n && "introspection" in n ? n : { db: n, introspection: void 0 };
-  return tm(t, {
+  // Nested builders copy the context but share this query-local usage flag.
+  const jsonbQuery = { used: false };
+  const query = tm(t, {
     ...r,
     dialect: e,
     db: s.db ?? r.db,
     introspection: s.introspection,
     schema: s.schema,
     requestSchema: s.requestSchema,
+    jsonbQuery,
   });
+  if (jsonbQuery.used) {
+    try {
+      assertJsonbQueryLimits(query.compile());
+    } catch (error) {
+      throwJsonbError(error);
+    }
+  }
+  return query;
+}
+function throwJsonbError(error) {
+  if (error?.code === "54000")
+    throw new Ie({
+      httpStatus: 400,
+      code: error.code,
+      message: error.message,
+      details: null,
+      hint: "Reduce the JSONB filter size or depth.",
+    });
+  throw error;
+}
+function tryJsonbContainment(...args) {
+  try {
+    const predicate = compileJsonbContainment(...args);
+    if (predicate) args[3].jsonbQuery.used = true;
+    return predicate;
+  } catch (error) {
+    throwJsonbError(error);
+  }
 }
 var Wc = Ja(cc());
 Xn();
