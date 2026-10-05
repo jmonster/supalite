@@ -34,6 +34,10 @@ import { App } from "../upstream/lite-0.11.0/dist/index.js";
 
 Tests cover SDK insert, select, equality-filter, exact-count operations, export targets, and normal CLI behavior. They do not establish comprehensive compatibility.
 
+## Auth upgrade compatibility
+
+See [behavior, verification and limits](docs/upgrade-auth-users.md).
+
 ## License
 
 The upstream Apache-2.0 license is preserved in [LICENSE](LICENSE) and [upstream/lite-0.11.0/LICENSE](upstream/lite-0.11.0/LICENSE). See [NOTICE](NOTICE) for attribution.

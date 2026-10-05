@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { normalizeSupabaseAuthUser } from "./upgrade-auth-users.js";
 import as, { statSync, readFileSync } from "node:fs";
 import * as Fe from "node:path";
 import Fe__default, { join } from "node:path";
@@ -18146,6 +18147,7 @@ async function ro(e, t = {}) {
     for (let f of l) {
       let h = { ...f };
       if (n === "supabase" && o === "users") {
+        h = normalizeSupabaseAuthUser(h);
         let y = h.confirmed_at;
         y != null && h.email_confirmed_at == null && (h.email_confirmed_at = y);
       }
