@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { formatBinaryValue } from "./upgrade-binary-value.js";
 import as, { statSync, readFileSync } from "node:fs";
 import * as Fe from "node:path";
 import Fe__default, { join } from "node:path";
@@ -18453,6 +18454,8 @@ function Oh(e, t) {
       s = n.includes("jsonb") ? "::jsonb" : "::json";
     return `${Pn(r)}${s}`;
   }
+  let binary = formatBinaryValue(e);
+  if (binary !== undefined) return binary;
   return e instanceof Date
     ? Pn(e.toISOString())
     : typeof e == "object"
