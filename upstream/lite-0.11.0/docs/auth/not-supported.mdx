@@ -1,6 +1,6 @@
 ---
 title: "Auth: not supported"
-description: "Anonymous sign-in, manual identity linking, the admin API, MFA, and OAuth providers beyond github/google are not implemented yet. What's planned vs. not planned, and the hosted-Supabase workaround."
+description: "Manual identity linking, the admin API, MFA, and OAuth providers beyond github/google are not implemented yet. What's planned vs. not planned, and the hosted-Supabase workaround."
 ---
 
 import { Aside } from '@astrojs/starlight/components';
@@ -26,7 +26,6 @@ Config schema or partial groundwork exists; these are the next Auth surfaces on 
 | Method | Upstream doc | Notes |
 |---|---|---|
 | `signInWithOAuth()` / `exchangeCodeForSession()` for other providers | [Social login](https://supabase.com/docs/guides/auth/social-login) | Config schema exists for the remaining 16 providers (incl. Apple); `github`/`google` already work |
-| `signInAnonymously()` | [Anonymous sign-ins](https://supabase.com/docs/guides/auth/auth-anonymous) | Create an anonymous session |
 | `linkIdentity()` | [Auth admin API](https://supabase.com/docs/reference/javascript/auth-admin-api) | Manually link an OAuth identity to an existing user; automatic linking on OAuth sign-in already works |
 | `unlinkIdentity()` | [Auth admin API](https://supabase.com/docs/reference/javascript/auth-admin-api) | Remove a linked identity |
 | `admin.createUser()` | [Auth admin API](https://supabase.com/docs/reference/javascript/auth-admin-api) | Direct user creation, skips confirmation |

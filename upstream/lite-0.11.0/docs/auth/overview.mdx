@@ -8,19 +8,19 @@ import { Aside, Card, CardGrid } from '@astrojs/starlight/components';
 Supabase Lite ships a GoTrue-compatible Auth API at `/auth/v1/*`. For the methods it implements, `@supabase/supabase-js`'s `auth` client works unchanged: same request shapes, same JWT format, same session/refresh-token behavior.
 
 <Aside type="note">
-Auth support is capability-independent of the database backend. The same 13 endpoints work identically on SQLite, PGlite, and Postgres, since Auth is not a Postgres-vs-SQLite translation problem the way the Data API is. One exception: on the Cloudflare D1 backend, multi-statement Auth transaction spans (OAuth callback/token writes, email-change and other OTP verification) run best-effort without a wrapping transaction (D1 has no callback transaction API); single-statement guards still prevent auth-code/state reuse. All other backends, including Durable Objects, are fully transactional.
+Auth support is capability-independent of the database backend. The same Auth implementation is used on SQLite, PGlite, and Postgres, since Auth is not a Postgres-vs-SQLite translation problem the way the Data API is. One exception: on the Cloudflare D1 backend, multi-statement Auth transaction spans (OAuth callback/token writes, email-change and other OTP verification) run best-effort without a wrapping transaction (D1 has no callback transaction API); single-statement guards still prevent auth-code/state reuse. All other backends, including Durable Objects, are fully transactional.
 </Aside>
 
 ## Coverage
 
-13 of 63 `supabase-js` auth methods are implemented as real backend endpoints, including OAuth sign-in for `github` and `google` (PKCE + implicit flows, automatic account linking). Of the remaining 50: 13 are planned (other OAuth providers incl. Apple, anonymous sign-in, manual identity linking, the admin API), 27 are not currently planned (MFA, SSO, Web3, OAuth-server), and 10 are client-side-only helpers that need no backend (`getSession`, `onAuthStateChange`, and similar) and already work as-is since they don't hit the network.
+14 of 63 `supabase-js` auth methods have backend support, including OAuth sign-in for `github`/`google` and opt-in [anonymous guest/email conversion](../../../../docs/anonymous-onboarding.md). Of the remaining 49: 12 are planned (other OAuth providers, manual identity linking and the admin API), 27 are not currently planned (MFA, SSO, Web3, OAuth-server), and 10 are client-side helpers. Anonymous signup requires controlled deployments or external abuse protection; its guide states the backend qualification limits.
 
 <CardGrid>
   <Card title="Supported flows">
-    Email/password, OTP, sessions, password recovery, OAuth sign-in (github/google): the 13 implemented endpoints with examples. [Read more →](/auth/supported-flows/)
+    Email/password, OTP, sessions, password recovery, OAuth sign-in (github/google), opt-in guest/email conversion: supported methods with examples. [Read more →](/auth/supported-flows/)
   </Card>
   <Card title="Not supported">
-    Other OAuth providers, anonymous sign-in, admin API, MFA: what's missing and the hosted-Supabase workaround. [Read more →](/auth/not-supported/)
+    Other OAuth providers, admin API, MFA: what's missing and the hosted-Supabase workaround. [Read more →](/auth/not-supported/)
   </Card>
   <Card title="Email delivery & templates">
     The console mail catcher, choosing a real email driver, verification links, and customizable templates. [Read more →](/auth/email/)

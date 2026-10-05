@@ -8,6 +8,14 @@ Contributions cover SQLite API compatibility and migration to full Supabase. The
 
 An editable baseline of the published `@supabase/lite` **0.11.0** package. Main retains the original package's functionality; feature changes remain on their respective branches until merged.
 
+## Guest accounts
+
+Opt-in anonymous sign-in lets a guest save data, verify an email, and add a
+password while retaining the same user ID. See [the workflow and deployment
+requirements](docs/anonymous-onboarding.md).
+
+Tests cover the guest lifecycle, email-auth regressions, rollback, and conflict handling.
+
 ## Package
 
 `upstream/lite-0.11.0/` contains the working JavaScript implementation, declarations, and package assets. The published JavaScript has been formatted for readability. The npm artifact does not include the original TypeScript sources.

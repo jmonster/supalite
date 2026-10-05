@@ -17934,6 +17934,9 @@ function Sg(t, e, n) {
   for (let c of n) if (sR(c).test(l)) return true;
   return false;
 }
+function isAnonymousAuthUser(user) {
+  return user.is_anonymous === true || user.is_anonymous === 1;
+}
 var Fs = class t {
   constructor(e, n, r) {
     this.repo = e;
@@ -18073,9 +18076,93 @@ var Fs = class t {
       s = this.config.additional_redirect_urls ?? [];
     return e && Sg(e, r, s) ? e : n && Sg(n, r, s) ? n : r;
   }
-  async signUp(e, n, r, s) {
+  async signUpRequest(body, redirectTo) {
+    // Go's typed decoder treats null like empty parameters, accepts field-name
+    // aliases, and ignores null assignments to strings. Validate each decoded
+    // entry before an alias can overwrite an earlier malformed value.
+    body ??= {};
+    if (typeof body !== "object" || Array.isArray(body)) {
+      throw js("Signup requires a JSON object");
+    }
+    const strings = [
+      "email",
+      "phone",
+      "password",
+      "channel",
+      "code_challenge",
+      "code_challenge_method",
+    ];
+    const decoded = {};
+    for (const [rawKey, value] of Object.entries(body)) {
+      const key = rawKey.toLowerCase();
+      if (strings.includes(key)) {
+        if (value == null) continue;
+        if (typeof value !== "string")
+          throw js(`Signup ${key} must be a string`);
+        decoded[key] = value;
+      } else if (key === "data") {
+        if (
+          value != null &&
+          (typeof value !== "object" || Array.isArray(value))
+        ) {
+          throw js("Signup data must be a JSON object");
+        }
+        decoded.data = value;
+      }
+    }
+    body = decoded;
+    if (!body.email && !body.phone) {
+      return this.signUp(body.email, body.password, body.data, redirectTo);
+    }
     if (this.config.enable_signup === false) throw Lo();
-    if (!e) throw qh();
+    if (body.phone) {
+      if (!body.password) throw K("Signup requires a valid password", 400);
+      this.assertPasswordStrong(body.password);
+      if (body.email) {
+        throw K(
+          "Only an email address or phone number should be provided on signup",
+          400,
+        );
+      }
+      throw new D(400, "phone_provider_disabled", "Phone signups are disabled");
+    }
+    return this.signUp(body.email, body.password, body.data, redirectTo);
+  }
+  async signInAnonymously(data) {
+    if (this.config.enable_anonymous_sign_ins !== true) throw qh();
+    if (this.config.enable_signup === false) throw Lo();
+    return this.repo.transaction(async (repo) => {
+      const service = new Fs(repo, this.config, this.mailer);
+      const user = await repo.createUser({
+        id: pe(),
+        email: null,
+        encrypted_password: null,
+        is_anonymous: true,
+        raw_app_meta_data: {},
+        raw_user_meta_data: data ?? {},
+      });
+      const session = await service.createSessionForUser(
+        repo.parseUserJson(user),
+        [],
+        "session",
+        { provider: "anonymous" },
+      );
+      await service.createAuditLog(
+        user.id,
+        "",
+        "user_signedup",
+        "team",
+        true,
+        "anonymous",
+      );
+      return { user: session.user, session };
+    });
+  }
+  async signUp(e, n, r, s) {
+    // The reference dispatches on email/phone only: a password supplied during
+    // anonymous signup is discarded rather than becoming a login credential.
+    if (!e) return this.signInAnonymously(r);
+    if (this.config.enable_signup === false) throw Lo();
     if (this.config.email?.enable_signup === false) throw Fh();
     if (n == null || n === void 0 || n === "")
       throw K("Signup requires a valid password", 400);
@@ -18312,6 +18399,7 @@ var Fs = class t {
           aud: e.aud || "authenticated",
           role: e.role || "authenticated",
           email: e.email ?? void 0,
+          is_anonymous: isAnonymousAuthUser(e),
           session_id: n,
         },
         this.config.jwt_secret,
@@ -18355,6 +18443,9 @@ var Fs = class t {
   async updateUser(e, n, r) {
     let s = await this.repo.findUserById(e);
     if (!s) throw Pt();
+    if (isAnonymousAuthUser(s) && n.password && !n.email) {
+      throw K("Anonymous users cannot update their password", 422);
+    }
     let i = this.repo.parseUserJson(s),
       o = {},
       a = null,
@@ -18387,8 +18478,16 @@ var Fs = class t {
         if (((l = true), p !== i.email?.toLowerCase())) {
           let h = await this.repo.findUserByEmail(p);
           if (h && h.id !== e) throw Lh();
-          if (((a = await this.sendEmailChange(s, p, o, r)), !a))
-            throw pt("Database error updating user");
+          const autoconfirm = !(
+            this.config.email?.enable_confirmations ??
+            this.config.enable_confirmations ??
+            false
+          );
+          if (isAnonymousAuthUser(i) && autoconfirm) {
+            return this.autoConfirmAnonymousEmail(e, p, o, c);
+          }
+          a = await this.sendEmailChange(s, p, o, r);
+          if (!a) throw pt("Database error updating user");
         }
       }
     u || (l = true);
@@ -18416,6 +18515,79 @@ var Fs = class t {
         )));
     let d = await this.repo.findIdentitiesByUserId(e);
     return this.mapUserToResponse(f, d, "user");
+  }
+  async autoConfirmAnonymousEmail(userId, email, updates, passwordChanged) {
+    return this.repo.transaction(async (repo) => {
+      const service = new Fs(repo, this.config, this.mailer);
+      const current = await repo.findUserById(userId);
+      if (!current || !isAnonymousAuthUser(current)) {
+        throw K(
+          "Anonymous user was already converted; retry the email update",
+          409,
+        );
+      }
+      const owner = await repo.findUserByEmail(email);
+      if (owner && owner.id !== userId) throw Lh();
+      const user = repo.parseUserJson(current);
+      const identityData = {
+        sub: userId,
+        email,
+        email_verified: true,
+        phone_verified: false,
+      };
+      const identities = await repo.findIdentitiesByUserId(userId);
+      const identity = identities.find((item) => item.provider === "email");
+      if (identity) {
+        await repo.updateIdentity(identity.id, {
+          identity_data: { ...identity.identity_data, ...identityData },
+        });
+      } else {
+        await repo.createIdentity({
+          id: pe(),
+          provider: "email",
+          provider_id: userId,
+          user_id: userId,
+          identity_data: identityData,
+        });
+      }
+      // Auth v2.186 preserves app metadata in this autoconfirm path. The
+      // confirmed-link path below updates providers as part of verification.
+      const updated = await repo.updateUser(userId, {
+        ...updates,
+        email,
+        confirmed_at: new Date().toISOString(),
+        is_anonymous: false,
+        email_change: null,
+        email_change_token_current: null,
+        email_change_token_new: null,
+        raw_user_meta_data: {
+          ...(updates.raw_user_meta_data ?? user.raw_user_meta_data),
+          email_verified: true,
+        },
+      });
+      if (!updated) throw pt("Database error updating user");
+      if (passwordChanged) {
+        await service.createAuditLog(
+          userId,
+          user.email ?? "",
+          "user_updated_password",
+          "user",
+          false,
+        );
+      }
+      await service.createAuditLog(
+        userId,
+        user.email ?? "",
+        "user_modified",
+        "user",
+        false,
+      );
+      return service.mapUserToResponse(
+        repo.parseUserJson(updated),
+        await repo.findIdentitiesByUserId(userId),
+        "user",
+      );
+    });
   }
   async signOut(e, n, r) {
     let s = n ?? "local";
@@ -18607,6 +18779,18 @@ var Fs = class t {
         (o.email_change = null),
         (o.email_change_token_current = null),
         (o.email_change_token_new = null));
+      if (isAnonymousAuthUser(s)) {
+        // verifyOtp owns the transaction and has claimed the token. A conflict
+        // or identity failure must roll back that claim and every conversion
+        // field, leaving the existing guest and its application data intact.
+        const owner = await this.repo.findUserByEmail(s.email_change);
+        if (owner && owner.id !== e.id) throw Lh();
+        o.is_anonymous = false;
+        o.raw_user_meta_data = {
+          ...s.raw_user_meta_data,
+          email_verified: true,
+        };
+      }
       let u = (await this.repo.findIdentitiesByUserId(e.id)).find(
         (f) => f.provider === "email",
       );
@@ -18795,6 +18979,7 @@ var Fs = class t {
           aud: e.aud || "authenticated",
           role: e.role || "authenticated",
           email: e.email ?? void 0,
+          is_anonymous: isAnonymousAuthUser(e),
           session_id: l,
         },
         this.config.jwt_secret,
@@ -18839,7 +19024,7 @@ var Fs = class t {
         identities: n.map((a) => this.mapIdentityToResponse(a, r, e)),
         created_at: e.created_at,
         updated_at: e.updated_at,
-        is_anonymous: false,
+        is_anonymous: isAnonymousAuthUser(e),
       };
     return (
       e.confirmed_at &&
@@ -20637,7 +20822,7 @@ var Tu = new Re()
   .post("/signup", async (t) => {
     let e = await $t(t, { requireBody: true }),
       { authService: n } = t.var,
-      r = await n.signUp(e.email, e.password, e.data, On(t));
+      r = await n.signUpRequest(e, On(t));
     return r.session
       ? (Vs(t, r.session), t.json(r.session, 200))
       : t.json(r.user, 200);
