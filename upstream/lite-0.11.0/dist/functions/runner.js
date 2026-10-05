@@ -85,7 +85,7 @@ export async function prepareFunctions(app, {
   }
   const directory = dirname(absoluteConfigPath);
   const projectDirectory = basename(directory) === "supabase" ? dirname(directory) : directory;
-  let configuration = { ...app.config }, closed = false, reloading, generation = 0;
+  let configuration = { ...app.config }, closed = false, reloading, generation = 0, closing, drained;
   const workers = new Set();
   async function discover(config) {
     const { services, merged } = config.edge_runtime?.enabled === false
@@ -117,6 +117,7 @@ export async function prepareFunctions(app, {
   }
   function release(slot) {
     slot.active--;
+    if (drained && [...workers].every(worker => worker.active === 0)) drained();
     if (slot.active || slot.closing) return;
     if (prepared.policy === "oneshot" || slot.draining || !slot.runtime) void retire(slot);
     else { slot.idle = setTimeout(() => { void retire(slot); }, idleTimeoutMs); slot.idle.unref?.(); }
@@ -236,10 +237,28 @@ export async function prepareFunctions(app, {
         return Response.json({ code: "WORKER_ERROR", message: "Function request failed; see server logs" }, { status: 500 });
       } finally { if (!keepBody) done(); }
     },
-    async close() {
-      closed = true; generation++;
-      await Promise.all([...workers].map(retire));
-      await reloading?.catch(() => {});
+    close({ drainTimeoutMs = 0 } = {}) {
+      if (!Number.isFinite(drainTimeoutMs) || drainTimeoutMs < 0)
+        throw new Error("drainTimeoutMs must be nonnegative and finite");
+      return closing ??= (async () => {
+        closed = true; generation++;
+        // The CLI keeps the API listener alive during this bounded grace period:
+        // admitted portable functions may still call local Auth/Data/Storage.
+        if (drainTimeoutMs && [...workers].some(worker => worker.active > 0)) {
+          let timer;
+          try {
+            await Promise.race([
+              new Promise(resolve => { drained = resolve; }),
+              new Promise(resolve => { timer = setTimeout(resolve, drainTimeoutMs); }),
+            ]);
+          } finally { clearTimeout(timer); drained = undefined; }
+        }
+        await Promise.all([...workers].map(retire));
+        await reloading?.catch(() => {});
+        // retire() retains failed slots and logs their original diagnostics.
+        // Do not report a successful CLI shutdown when close was unconfirmed.
+        if (workers.size) throw new Error("Function worker shutdown was not confirmed");
+      })();
     },
   };
   app.config.functions = prepared.merged;
