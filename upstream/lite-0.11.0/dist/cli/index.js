@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+import {
+  NATIVE_CLI_VERSION, resolveLocalRuntime, nativeCommand, parseNativeStatus, assertNativeStopped,
+  requireFreshLocalDirectory, inspectFunctionUpgrade, copyFunctions, functionConfigToml, writeLocalCredentials,
+} from "./upgrade-local-runtime.js";
 import { normalizeSupabaseAuthUser } from "./upgrade-auth-users.js";
 import {
   inspectStorage, assertStorageUnchanged, storageInserts, storageShape,
@@ -19323,7 +19327,7 @@ async function YT() {
   };
 }
 async function Yr(e, t = {}) {
-  let n = process.env.LITE_SUPABASE_CLI?.split(/\s+/).filter(Boolean) ?? KT,
+  let n = process.env.LITE_SUPABASE_CLI?.split(/\s+/).filter(Boolean) ?? (t.runtime === "native" ? ["bunx", "--bun", `supabase@${NATIVE_CLI_VERSION}`] : KT),
     { spawn: r } = await import("node:child_process").catch(() => {
       throw new Error(
         "Local Supabase upgrade requires a Node-compatible runtime",
@@ -19337,6 +19341,7 @@ async function Yr(e, t = {}) {
           ...process.env,
           SUPABASE_TELEMETRY_DISABLED: "1",
           DO_NOT_TRACK: "1",
+          ...(t.runtime === "native" ? { SUPABASE_EXPERIMENTAL_STACK: "1" } : {}),
         },
       }),
       c = [],
@@ -19422,34 +19427,41 @@ async function Zh(e) {
   let r = `${t}.bak`;
   return ((await Ic(r)) || (await he__default.writeFile(r, n, "utf-8")), r);
 }
-async function tC(e) {
+async function tC(e, runtime) {
   let t = Fe__default.join(e, "supabase", "config.toml");
   (await Ic(t)) ||
     (await he__default.mkdir(e, { recursive: true }),
-    await Yr(["init", "--workdir", e, "--yes"], { timeoutMs: 6e4 }));
+    await Yr(["init", "--workdir", e, "--yes"], { timeoutMs: 6e4, runtime }));
 }
-async function nC(e, t, n, storage) {
+async function nC(e, t, n, storage, options = {}) {
   let r = Fe__default.join(e, "supabase", "config.toml"),
     s = ZT(await he__default.readFile(r, "utf-8"));
   ((s = s.replace(/^project_id\s*=.*$/m, `project_id = "${t}"`)),
     (s = le(s, "api", "port", String(n.api))),
     (s = le(s, "db", "port", String(n.db))),
     (s = le(s, "db", "shadow_port", String(n.shadow))),
-    (s = le(s, "db", "major_version", "15")),
+    (s = le(s, "db", "major_version", options.runtime === "native" ? "17" : "15")),
     (s = le(s, "db.seed", "enabled", "false")),
-    (s = le(s, "studio", "enabled", "true")),
+    (s = le(s, "studio", "enabled", String(options.runtime !== "native"))),
     (s = le(s, "studio", "port", String(n.studio))),
-    (s = le(s, "inbucket", "enabled", "false")),
-    (s = le(s, "inbucket", "port", String(n.inbucket))),
+    (s = le(s, options.runtime === "native" ? "local_smtp" : "inbucket", "enabled", "false")),
+    (s = le(s, options.runtime === "native" ? "local_smtp" : "inbucket", "port", String(n.inbucket))),
     (s = le(s, "realtime", "enabled", "false")),
     (s = le(s, "storage", "enabled", String(!!storage))),
-    (s = le(s, "edge_runtime", "enabled", "false")),
+    (s = le(s, "edge_runtime", "enabled", String(options.runtime === "native" && !!options.functions?.enabled))),
     (s = le(s, "edge_runtime", "inspector_port", String(n.edgeInspector))),
     (s = le(s, "analytics", "enabled", "false")),
     (s = le(s, "analytics", "port", String(n.analytics))),
     (s = le(s, "db.pooler", "enabled", "false")),
     (s = le(s, "db.pooler", "port", String(n.pooler))),
     storage && (s = le(s, "storage", "file_size_limit", JSON.stringify(`${storage.globalLimit}B`))),
+    options.runtime === "native" && (
+      (s = le(s, "auth", "enabled", String(options.sourceConfig?.auth?.enabled !== false))),
+      options.functions && (
+        (s = le(s, "edge_runtime", "policy", JSON.stringify(options.functions.policy))),
+        (s += functionConfigToml(options.functions))
+      )
+    ),
     await he__default.writeFile(r, s, "utf-8"));
 }
 function eg(e) {
@@ -19520,11 +19532,12 @@ var KT,
         "supavisor",
       ]));
     uo = class e {
-      constructor(t, n, r, s) {
+      constructor(t, n, r, s, runtime = "legacy") {
         this.workdir = t;
         this.projectId = n;
         this.status = r;
         this.cleanupOnStop = s;
+        this.runtime = runtime;
       }
       stopped = false;
       static async start(t = {}) {
@@ -19535,24 +19548,47 @@ var KT,
             )),
           r = t.projectId ?? `lite-local-${Date.now().toString(36)}`,
           s = t.cleanupOnStop ?? !t.workdir,
-          i = await YT();
+          i = await YT(),
+          runtime = resolveLocalRuntime(t.runtime, "local");
+        if (runtime === "native") {
+          await requireFreshLocalDirectory(n, t.sourceDirectory ?? process.cwd());
+          const version = await Yr(["--version"], { runtime, timeoutMs: 6e4 });
+          if (version.stdout.trim() !== NATIVE_CLI_VERSION)
+            throw new Error(`Native local upgrade requires official Supabase CLI ${NATIVE_CLI_VERSION}. Set LITE_SUPABASE_CLI to that binary.`);
+        }
+        let nativeStartAttempted = false;
         try {
-          (await tC(n),
-            await nC(n, r, i, t.storage),
-            await sC(n, t.sourceConfig),
-            await Yr(
+          (await tC(n, runtime),
+            await nC(n, r, i, t.storage, { ...t, runtime }),
+            await sC(n, t.sourceConfig));
+          if (runtime === "native" && t.functions) await copyFunctions(t.functions, n);
+          nativeStartAttempted = runtime === "native";
+          await Yr(
+            runtime === "native" ? nativeCommand("start", n, { storage: !!t.storage, functions: !!t.functions?.enabled }) :
               ["start", "--workdir", n, "--yes", "--exclude", zT.filter((service) => !t.storage || service !== "storage-api").join(",")],
-              { timeoutMs: 5 * 6e4 },
-            ));
-          let { stdout: o } = await Yr(
-            ["status", "--workdir", n, "-o", "json"],
-            { timeoutMs: 6e4 },
+            { timeoutMs: 5 * 6e4, runtime },
           );
-          return new e(n, r, XT(o), s);
+          let { stdout: o } = await Yr(
+            runtime === "native" ? nativeCommand("status", n) : ["status", "--workdir", n, "-o", "json"],
+            { timeoutMs: 6e4, runtime },
+          );
+          return new e(n, r, runtime === "native" ? parseNativeStatus(o) : XT(o), s, runtime);
         } catch (o) {
+          if (runtime === "native") {
+            try {
+              if (nativeStartAttempted) {
+                const stopped = await Yr(nativeCommand("stop", n), { timeoutMs: 12e4, runtime });
+                assertNativeStopped(stopped.stdout);
+              }
+              if (s) await he__default.rm(n, { recursive: true, force: true });
+            } catch (cleanupError) {
+              throw new AggregateError([o, cleanupError], `Native local startup failed: ${o.message ?? o}. Cleanup was not confirmed: ${cleanupError.message ?? cleanupError}. Inspect the owned stack at ${n}.`);
+            }
+            throw o;
+          }
           throw (
             await Yr(["stop", "--workdir", n, "--no-backup"], {
-              timeoutMs: 12e4,
+              timeoutMs: 12e4, runtime,
             }).catch(() => {}),
             s &&
               (await he__default
@@ -19576,10 +19612,25 @@ var KT,
         }
       }
       async stop() {
+        if (this.runtime === "native") {
+          if (this.stopped) {
+            if (this.cleanupOnStop) await he__default.rm(this.workdir, { recursive: true, force: true });
+            return;
+          }
+          if (this.stopPending) return this.stopPending;
+          this.stopPending = (async () => {
+            const result = await Yr(nativeCommand("stop", this.workdir), { timeoutMs: 12e4, runtime: "native" });
+            assertNativeStopped(result.stdout);
+            this.stopped = true;
+            if (this.cleanupOnStop) await he__default.rm(this.workdir, { recursive: true, force: true });
+          })();
+          try { await this.stopPending; } finally { this.stopPending = null; }
+          return;
+        }
         this.stopped ||
           ((this.stopped = true),
           await Yr(["stop", "--workdir", this.workdir, "--no-backup"], {
-            timeoutMs: 12e4,
+            timeoutMs: 12e4, runtime: this.runtime,
           }).catch(() => {}),
           this.cleanupOnStop &&
             (await he__default.rm(this.workdir, {
@@ -19849,6 +19900,7 @@ var Ce,
         .option("--project-name <name>", "Name for the new Supabase project")
         .option("--supabase-token <token>", "Supabase personal access token")
         .option("--local-dir <path>", "Supabase CLI workdir for --target local")
+        .option("--local-runtime <runtime>", "Local runtime: legacy (default) or native (official CLI 2.119.0)")
         .option("--storage-quiescent", "Confirm source writers are stopped until Storage upgrade finishes", false)
         .option(
           "--migrate-sessions",
@@ -19874,7 +19926,10 @@ var Ce,
           (n || console.log(),
             await X(async () => {
               await Y(t.config);
-              let s = ig(t.target);
+              let s = ig(t.target),
+                localRuntime = resolveLocalRuntime(t.localRuntime, s);
+              if (localRuntime === "native" && !t.localDir)
+                throw new Error("--local-runtime native requires --local-dir <new-or-empty-directory> outside the source project.");
               if (
                 (gc("upgrade.target", s),
                 gc("upgrade.dry_run", !!t.dryRun),
@@ -19898,6 +19953,25 @@ var Ce,
               } finally {
                 n && (console.log = r);
               }
+              let functions = null, sourceDirectory;
+              if (localRuntime === "native") {
+                try {
+                  const configPath = Fe__default.resolve(await qn(t.config));
+                  functions = await inspectFunctionUpgrade(i.config, configPath);
+                  sourceDirectory = Fe__default.basename(functions.directory) === "supabase" ? Fe__default.dirname(functions.directory) : functions.directory;
+                  await requireFreshLocalDirectory(t.localDir, sourceDirectory);
+                } catch (error) {
+                  if (!n) throw error;
+                  const report = {
+                    summary: { total: 0, passed: 0, warned: 0, failed: 0, upgrade_safe: false },
+                    results: [], readiness: null, rehearsal: null,
+                    errors: [{ phase: "readiness", message: String(error) }],
+                  };
+                  await new Promise((resolve, reject) => process.stdout.write(JSON.stringify(report, null, 2) + "\n", error => error ? reject(error) : resolve()));
+                  process.exit(1);
+                  return;
+                }
+              }
               let o = await Ph(i);
               if (n) {
                 const storage = await inspectStorage(i, { target: s, quiescent: t.storageQuiescent, adapterClass: Gs });
@@ -19907,10 +19981,13 @@ var Ce,
                   R.storage = { buckets: storage.buckets.length, objects: storage.objects.length, rehearsal };
                   R.summary.upgrade_safe &&= rehearsal.ok;
                 }
+                if (functions) R.functions = { enabled: functions.enabled, names: Object.keys(functions.functions), files: functions.files.length, omitted: functions.omitted };
                 (r(JSON.stringify(R, null, 2)),
                   R.summary.upgrade_safe || process.exit(1));
                 return;
               }
+              if (functions?.omitted.length)
+                console.log(Ce.default.yellow(`Functions configuration/files not copied: ${functions.omitted.join(", ")}. Reconfigure required secrets at the destination.`));
               console.log(Ce.default.dim("Running readiness checks..."));
               let a = await Wr("readiness", () => Ch(i, o, { target: s, quiescent: t.storageQuiescent }));
               if ((jh(a), !a.ok))
@@ -19943,7 +20020,8 @@ Rehearsing upgrade against in-memory pglite...`),
                   await requireFreshStorageDirectory(R, a.storage.root);
                   await assertStorageUnchanged(i, a.storage);
                 }
-                let F = await Zh(R),
+                if (localRuntime === "native") await requireFreshLocalDirectory(R, sourceDirectory);
+                let F = localRuntime === "native" ? null : await Zh(R),
                   j = null;
                 if (F) {
                   let H = Fe__default.relative(process.cwd(), F) || F;
@@ -19959,6 +20037,9 @@ Rehearsing upgrade against in-memory pglite...`),
                       cleanupOnStop: !1,
                       sourceConfig: i.config,
                       storage: a.storage,
+                      runtime: localRuntime,
+                      sourceDirectory,
+                      functions,
                     })),
                     w.stop(`Local Supabase is running at ${S.status.apiUrl}`),
                     (I = await Wr("apply", () =>
@@ -20012,6 +20093,10 @@ ${j}`),
                   "Sessions and JWT secret not migrated. Existing tokens are invalid \u2014 users must re-authenticate.",
                   "Management API auth config sync is skipped for --target local; supported local auth settings are written before Supabase starts.",
                 ];
+                if (functions) {
+                  D.push(`Functions preserved: ${Object.keys(functions.functions).length} configured, ${functions.files.length} source/config files. Runtime enabled: ${functions.enabled}. Verify Deno compatibility and reconfigure any required secrets.`);
+                  if (functions.omitted.length) D.push(`Functions files/settings omitted: ${functions.omitted.join(", ")}.`);
+                }
                 (j && D.unshift(j),
                   I.storage &&
                     D.push(`Storage verified: ${I.storage.buckets} buckets, ${I.storage.objects} objects, ${I.storage.bytes} bytes. Recreate signed URLs against the new endpoint; backend versions, ETags and update/access times regenerate.`),
@@ -20022,6 +20107,7 @@ ${j}`),
                   let H = JSON.stringify(
                     {
                       target: "local",
+                      runtime: localRuntime,
                       workdir: S.workdir,
                       projectUrl: S.status.apiUrl,
                       apiUrl: S.status.apiUrl,
@@ -20029,12 +20115,13 @@ ${j}`),
                       dbUrl: S.status.dbUrl,
                       anonKey: S.status.anonKey,
                       serviceRoleKey: S.status.serviceRoleKey,
+                      ...(S.status.secretKey ? { secretKey: S.status.secretKey } : {}),
                       dbPassword: K,
                     },
                     null,
                     2,
                   );
-                  (await he__default.writeFile(t.dumpCredentials, H, "utf-8"),
+                  (await writeLocalCredentials(t.dumpCredentials, H),
                     console.log(
                       Ce.default.dim(
                         `Credentials written to ${t.dumpCredentials}`,
@@ -20778,7 +20865,9 @@ Xh();
 Ah();
 Hh();
 ef();
+tg();
 export {
+  uo as LocalSupabaseTarget,
   Gs as FileSystemStorageAdapter,
   Ph as collectUpgradeSource,
   co as exportUserData,
