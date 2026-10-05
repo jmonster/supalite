@@ -35,7 +35,7 @@ behavior and general identifier/value serialization are outside this change.
 
 ## Verification
 
-Run `bun install --frozen-lockfile`, then `bun test --bail --timeout 60000 test/upgrade-identity.test.mjs test/upgrade-identity-sequences.test.mjs`. Tests import the tracked production exporter directly and replay its SQL on fresh PGlite:
+Run `bun install --frozen-lockfile`, then `bun test --bail --timeout 60000 test/upgrade-identity.test.mjs test/upgrade-identity-sequences.test.mjs`. Tests replay exported SQL on fresh PGlite:
 
 - Both drivers verify that omitting the override/reset reproduces the errors, then preserve IDs, FK links,
   computed values, ordinary serial SQL, and successful next generated IDs
@@ -46,8 +46,6 @@ Run `bun install --frozen-lockfile`, then `bun test --bail --timeout 60000 test/
 - Catalog reconstruction follows `ALTER TABLE` identity changes
 
 These are local exporter/SQL replay tests, not a full Supabase upgrade run.
-
-The working CLI contains the schema, insert and sequence-reset changes directly. The helper is part of the installable package and has no preparation step.
 
 PostgreSQL references: [identity INSERT rules](https://www.postgresql.org/docs/current/sql-insert.html),
 [sequence catalog](https://www.postgresql.org/docs/current/catalog-pg-sequence.html),

@@ -1,112 +1,52 @@
 # JSONB containment design
 
-The compiler translates constant JSONB containment filters into SQLite JSON1 predicates. The adapter integrates those predicates with the published Lite 0.11.0 runtime.
-
-## Behavioral contract
-
-PostgREST `cs` and `cd` map to PostgreSQL JSONB `@>` and `<@`. The compiler accepts a SQL expression for the stored document and one constant JSON filter:
+SQLite JSON1 predicates implement PostgREST `cs`/`cd` (PostgreSQL JSONB `@>`/`<@`). The compiler returns a Kysely `RawBuilder<boolean | null>` without fetching rows into JavaScript:
 
 ```ts
 jsonbContainment(input, filter, 'contains' | 'containedBy', options?)
 ```
 
-It returns a Kysely `RawBuilder<boolean | null>` to compose with the existing query. It does not load rows into JavaScript or register a database function.
+`input` is a SQL expression; `filter` must be a constant JSON value. Dynamic AST operands are rejected by the adapter; ordinary SDK JSON keys are literal data, not AST instructions. See [package provenance](../README.md#package-and-provenance).
 
-The differential fixtures establish the following contract within the [input boundary](#limits-and-input-boundary):
+## Behavioral contract
 
-- Objects match recursively by key; extra members are permitted on the containing side
-- Array order and repeated requirements do not change containment
-- Each required array object matches a complete candidate element; matching fields from different candidates cannot be combined
-- One candidate may satisfy multiple required array elements
-- Nesting is significant: `[[1, 2]]` contains `[[1]]`, but not `[1]`
-- The root primitive exception allows `[1, 2]` to contain `1`; it does not let `{ a: [1, 2] }` contain `{ a: 1 }`
-- Empty objects and empty arrays require their respective container types
-- JSON null, missing members, and SQL NULL remain distinct; a SQL-null document produces NULL under either operator and under SQL `NOT`
-- Booleans are distinct from numbers; string comparisons are binary and case-sensitive
+Differential fixtures use PostgreSQL operators in PGlite as the reference for the [containment rules](https://www.postgresql.org/docs/current/datatype-json.html#JSON-CONTAINMENT):
 
-The expected values come from PostgreSQL operators running in PGlite, rather than a JavaScript reimplementation. The [PostgreSQL containment contract](https://www.postgresql.org/docs/current/datatype-json.html#JSON-CONTAINMENT) and [PostgREST operator mapping](https://docs.postgrest.org/en/stable/references/api/tables_views.html#operators) provide the reference behavior.
+- Objects match recursively by key; the containing object may have extra members
+- Array order and duplicates do not matter. Each required object must match one complete candidate element; one candidate may satisfy multiple requirements
+- Nesting matters: `[[1, 2]]` contains `[[1]]`, not `[1]`. Only at the root can an array contain a primitive: `[1, 2]` contains `1`, but `{a: [1]}` does not contain `{a: 1}`
+- Empty objects/arrays require the corresponding container type
+- JSON null, missing members and SQL NULL remain distinct. A SQL-null document yields NULL, including under `NOT`
+- Booleans differ from numbers; strings use binary, case-sensitive comparison
 
 ## Compiler structure
 
-After validation, dispatch tries the object-only `contains` specialization, then the shallow helper, then the general ancestor-carrying walk. All three share the same semantic contract and parameter budget.
+Validation precedes SQL generation, including on empty tables. Values and general keys/paths are bound parameters. Dispatch selects:
 
-### Validate before emitting SQL
+1. Object-only `contains`: typed path comparisons for keys matching `[A-Za-z_][A-Za-z0-9_]*`
+2. Shallow filters, depth ≤3: typed `json_each` and nested existence checks, in either direction
+3. General filters: a materialized recursive JSON1 walk, limited to filter depth plus one, with bottom-up matches retaining ancestor and complete-element identity
 
-An iterative pass validates the constant filter and checks its complexity. It rejects invalid values before query execution, including when the target table is empty. Scalar values and general keys/paths are bound parameters. The index specialization below emits only allowlisted top-level member names as SQL literals; generated aliases, JSON type names, and traversal metadata are internal SQL constants.
+Unsupported specialization shapes fall through without consuming parameter budget. The general plan preserves JSON types and captures the input separately from traversal aliases. It does not guarantee parse-once or linear-time execution.
 
-### Specialized object containment
+For a verified stored column, top-level string/number comparisons can use a matching `(column ->> 'member') COLLATE BINARY` expression index. Only allowlisted member names become SQL literals; values stay bound and ancestor/type/NULL guards remain. The adapter requires ordinary-table, non-generated-column metadata and a plain column reference. Views, virtual tables, unknown metadata, computed inputs and extracted paths are ineligible. Direct callers must guarantee that provenance before setting `{storedColumn: true}`.
 
-`jsonb-object-fast-path.js` handles `contains` patterns consisting only of objects and scalar values, with keys matching `[A-Za-z_][A-Za-z0-9_]*`. It emits bound JSON paths, guards every object ancestor, and compares each scalar with its JSON type intact.
-
-Unsupported shapes return to the caller before consuming parameter budget. Punctuation-bearing keys remain supported by the other plans. A missing path is a false match; a SQL-null input remains NULL. This specialization avoids the general walk for a common filter shape without changing the semantic contract.
-
-For a verified stored source column, top-level string/number comparisons are hoisted outside the guarded scalar query as `(column ->> 'member') COLLATE BINARY = ?`. This matches ordinary SQLite expression indexes produced by Lite's imperative PostgreSQL-DDL translation, for example `CREATE INDEX docs_status_idx ON docs ((body->>'status'));`. Values remain bound and the original comparison is removed, so `{status: 'open'}` uses two bindings rather than three. Ancestor/type checks and the SQL-NULL guard remain in place, including under `NOT` and `OR`.
-
-The adapter requires metadata for an ordinary table and a non-generated column. Views, virtual tables and unknown metadata decline hoisting: a plain reference alone can hide a volatile computed value. The core defaults to the original plan; direct callers may pass `{storedColumn: true}` alongside limit overrides only when they guarantee that provenance. The compiler additionally checks that the input AST is a plain column reference.
-
-Computed inputs, extracted JSON paths, nested member comparisons, arrays and arbitrary keys retain their existing plans. This does not create indexes, change the declarative schema differ, or support PostgreSQL GIN indexes. The expression and collation must match an existing index; casted or differently spelled extraction indexes are not promised. Indexes add storage and write cost, and broad or unindexed queries can still scan.
-
-### Bounded shallow containment
-
-`jsonb-shallow.js` specializes filters of depth three or less, including arrays, in both directions. It uses typed `json_each` nodes and bounded nested `EXISTS` / `NOT EXISTS` predicates. A required array object is evaluated against one candidate node, preserving element boundaries. Keys and values remain bound, wrong-type scalar inputs are guarded before JSON iteration, and SQL NULL remains NULL.
-
-The depth check runs before spending parameter budget. Deeper shapes return to the general walk. The depth limit bounds SQL nesting. Its tests cover the maximum eligible depth together with long extraction paths and embedding wrappers on both SQLite drivers.
-
-### General containment with ancestor metadata
-
-The general plan has three stages:
-
-1. Capture the input expression in an outer scope. This avoids accidental capture when the physical column is named `key`, `type`, `value`, or `id`.
-2. Walk the runtime document with a materialized recursive JSON1 CTE. Each node carries its key-path identity and a compact stack of ancestor keys/types. Traverse only through filter depth plus one; the extra level is needed to witness a disallowed child for `containedBy`.
-3. Build materialized match relations bottom-up, one per constant pattern node. Primitive matches compare type and value. `contains` intersects compatible parent identities with each required child's matching parent identities. `containedBy` subtracts parents with a direct child outside the permitted alternatives.
-
-Matching retains complete node identities. A matched child's parent can be projected from its ancestor metadata without joining back across every runtime node. This is what keeps both same-element semantics and the cost of wide, repetitive arrays manageable. The root primitive-array exception is handled at the final root check rather than applied recursively.
-
-JSON iteration uses a guarded container expression. Values returned for JSON strings by `json_each` are already dequoted; interpreting them as fresh JSON would lose type information or raise a malformed-JSON error. The implementation carries the JSON1 type alongside the value. See [SQLite JSON1](https://www.sqlite.org/json1.html).
-
-The general walk bounds traversal by filter depth and retains each node’s parent metadata. JSON1 can still parse subdocuments repeatedly; the compiler does not guarantee parse-once or linear-time execution.
+Matching indexes can come from Lite's imperative DDL translation; declarative schema diff is unchanged. Casted or differently spelled expression indexes are not guaranteed to match. PostgreSQL GIN indexes are unsupported. No index is created; broad or unindexed queries can still scan. See [measurements and write costs](performance.md).
 
 ## Lite integration boundary
 
-`lite-adapter.js` is deliberately narrower than the core compiler:
-
-1. Intercept only `$contains` / `$containedBy` on the SQLite dialect
-2. Resolve the physical column from the current table, schema, and alias; require declared `jsonb` metadata
-3. Preserve each operator's original REST literal in separate symbol metadata, so quoted JSON strings remain strings and `cs` plus `cd` on one column retain both operands
-4. Parse the raw literal as strict JSON, then invoke the core compiler
-5. Preserve JSON type through `->` paths; reject `->>` for JSONB containment with `42883`
-6. Wrap negated predicates with the existing query builder's SQL `NOT`
-7. Check the complete compiled feature-bearing query's parameter and SQL-byte budgets before execution
-
-The existing identifier resolver still owns qualification and quoting. The adapter resolves actual column metadata before choosing JSONB behavior; plain `json`, SQL arrays, ranges, and PostgreSQL's operator compiler are not silently reinterpreted.
-
-The JSON-path adapter uses direct-parent steps over a materialized tree and supports negative array indexes. Path extraction is a separate layer from containment. A path with more than 16 steps is rejected; a missing path yields SQL NULL.
-
-Repeated-column handling is supplied by [#18](https://github.com/jmonster/supalite/pull/18), a separate parser fix required by this branch.
+The adapter handles SQLite containment on declared `jsonb` columns only; other types and PostgreSQL compilation are unchanged. It preserves each REST operand separately, parses strict JSON, and retains SQL negation. JSON `->` paths support negative array indexes; missing paths yield SQL NULL. Text extraction (`->>`) is rejected with `42883`. Repeated-column filters depend on [#18](https://github.com/jmonster/supalite/pull/18).
 
 ## Limits and input boundary
 
-Default budgets are defined in the code, with two different scopes:
+Defaults:
 
-- Per JSON filter: maximum depth 16, root at depth zero; 128 value nodes, including containers; 64 emitted bound-parameter occurrences
-- Per JSON extraction path: 16 steps
-- Per compiled SQLite request that uses the feature: 100 total parameters and 100,000 UTF-8 SQL bytes, including other predicates and pagination
+- Per filter: depth 16 (root zero), 128 value nodes including containers, 64 emitted parameter occurrences
+- Per extraction path: 16 steps
+- Per compiled feature-bearing SQLite request: 100 parameters and 100,000 UTF-8 SQL bytes, including other predicates and pagination
 
-The HTTP error handling in `dist/index.js` maps complexity failures to HTTP 400 with code `54000`. Invalid JSON and invalid surrogate sequences use `22P02`; an escaped Unicode NUL uses `22P05`; filter integers outside `Number.isSafeInteger` use `22003`. These validation failures are HTTP 400 responses. The finite-number and strict-JSON checks do not reproduce every PostgreSQL numeric-input error.
+Budget and JSON-value failures return HTTP 400: complexity `54000`; invalid JSON/surrogates `22P02`; Unicode NUL `22P05`; filter integers outside `Number.isSafeInteger` `22003`, including JavaScript-supplied values. Finite-number checks do not reproduce every PostgreSQL numeric-input error.
 
-The core API accepts JavaScript JSON values, not an SQL expression as its filter operand. SQL NULL as the stored document is covered; SQL NULL as the filter expression is outside that API. JSON null is a supported filter value.
+JSON null is a supported filter; an SQL-null filter expression is outside the API. Stored JSON must be valid. JavaScript/SQLite numeric representation cannot preserve arbitrary-precision PostgreSQL distinctions, and duplicate stored object labels may produce different results rather than rejection.
 
-The fidelity boundary matters even for syntactically valid input:
-
-- Filter integers outside `Number.isSafeInteger` are rejected, including numbers supplied as JavaScript values and serialized with `JSON.stringify`; this is not limited to raw numeric literals
-- JavaScript parsing and SQLite numeric atoms also do not preserve arbitrary-precision PostgreSQL `numeric` distinctions
-- Raw stored documents with duplicate object labels can behave differently in JSON1 path lookup and iteration; no duplicate-label parity is claimed
-- Stored JSON must be valid for the selected JSON1 operations; the filter compiler is not a general repair or validation layer for externally written database text
-
-Stored numeric-fidelity and duplicate-label cases can produce different results rather than being uniformly rejected. The test corpus records those cases separately from supported-domain cases.
-
-Budgets limit generated-query complexity, not table size or total latency. A broad filter can still scan many large documents. The SQL uses recursive CTEs and materialization features available in the two tested engines; other Lite runtime adapters need their own execution tests.
-
-## Direct package integration
-
-The runtime imports its package-local [`dist/query/` helpers](../upstream/lite-0.11.0/dist/query/) directly. Shared tests import the working package; the separate published-reference harness is used only for labeled baseline comparisons and benchmarks. See [Package and provenance](../README.md#package-and-provenance) for the original artifact and provenance.
+Budgets bound generated-query complexity, not document/table size or latency. Native Node SQLite and local libSQL are tested; other runtime adapters require their own execution tests.

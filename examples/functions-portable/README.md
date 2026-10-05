@@ -18,7 +18,7 @@ bun install --frozen-lockfile
 LITE_SUPABASE_CLI=/absolute/path/to/supabase bun examples/functions-portable/graduate.mjs
 ```
 
-The command creates isolated source and target workdirs, runs the real `lite upgrade --target local --local-runtime native` command, verifies both backends and stops only the processes it started. Native Supabase downloads its service binaries on first use. It needs a host that permits PostgreSQL Unix sockets. No Docker or hosted account is required for this native route.
+The command creates isolated source and target workdirs, runs the `lite upgrade --target local --local-runtime native` command, verifies both backends and stops only the processes it started. Native Supabase downloads its service binaries on first use. It needs a host that permits PostgreSQL Unix sockets. No Docker or hosted account is required for this native route.
 
 To exercise Lite alone:
 
@@ -65,4 +65,4 @@ Point the same client at the printed target URL/key and run `DEMO_PHASE=verify` 
 
 This verifies one populated SQLite/filesystem project graduating to the official Supabase stack run locally: Postgres, Auth, Data API, Storage and Edge Runtime, with unchanged application and function source. Deployment to managed hosted Supabase has not been qualified. Sessions and refresh tokens are deliberately not migrated. Users sign in again. Signed URLs must be recreated. Storage backend versions, ETags and update/access times may change; logical object identity and bytes must not.
 
-Both configurations disable email confirmation only for disposable local accounts. The checked-in keys, JWT secret and password are fixture values, unsuitable for a real deployment. Functions execute trusted project code; Lite's Bun worker is not a security sandbox. The qualification requires native Supabase Storage and Edge Runtime together in one run; older independent receipts are not evidence for this complete route.
+Both configurations disable email confirmation only for disposable local accounts. The checked-in keys, JWT secret and password are fixture values, unsuitable for a real deployment. Functions execute trusted project code; Lite's Bun worker is not a security sandbox.

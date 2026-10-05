@@ -39,5 +39,3 @@ node scripts/benchmark-streaming.mjs --quick --heap=1024
 ```
 
 Omit `--quick` for the 96 MiB fixtures. The CLI control is the pinned npm package; the target-runner control is this implementation’s retained legacy adapter path. New reports go under `.generated/`. The old-space cap is not a deployment-memory limit.
-
-Tests import the tracked CLI and `sqlite-streaming.js` directly; no rewriting or test loader is required.
