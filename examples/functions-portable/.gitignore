@@ -1,0 +1,4 @@
+.lite/
+node_modules/
+deno.lock
+supabase/functions/tasks/deno.lock

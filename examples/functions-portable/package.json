@@ -1,0 +1,6 @@
+{
+  "name": "supabase-functions-portability-fixture",
+  "private": true,
+  "type": "module",
+  "dependencies": { "@supabase/supabase-js": "2.117.2" }
+}

@@ -524,10 +524,24 @@ declare class NoopSmsDriver implements SmsDriver {
     send(message: SmsMessage): Promise<void>;
 }
 
+/** Gateway credentials only, not user/session authorization. Both are null for OPTIONS or verify_jwt: false. */
+interface FunctionInvocationContext {
+    readonly name: string;
+    readonly jwt: Readonly<Record<string, unknown>> | null;
+    readonly apiKeyType: ApiKeyType | null;
+}
+/** Executes trusted host code. No isolation, module loading, or lifecycle management. */
+interface FunctionsExecutor {
+    /** Preserve streaming and cancellation by consuming the original Request and returning a Response. */
+    fetch(request: Request, context: FunctionInvocationContext): Response | Promise<Response>;
+}
+export type { FunctionInvocationContext, FunctionsExecutor };
+
 interface AppDrivers {
     email: EmailDriver;
     sms: SmsDriver;
     cache: CacheDriver;
+    functions?: FunctionsExecutor;
 }
 type PartialAppDrivers = Partial<AppDrivers>;
 interface AppDriversConfig {

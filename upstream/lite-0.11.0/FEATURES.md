@@ -59,7 +59,7 @@ CRUD, filtering, embedding, and RLS over your tables. This is the most complete 
 | RLS enforcement (`auth.uid()`/`role()`/`jwt()`, permissive/restrictive, per-command, roles) | ✅ | ✅ | - | - | App-layer rewrite on SQLite; native on Postgres. Cross-table `SELECT`/`EXISTS` policies resolve every relation from its own explicit schema or `public` and preserve `AS` or implicit aliases through nested same-table queries. On `sqlite-postgres`, `lite start` restores or fully rebuilds runtime metadata from authoritative recorded migration SQL, validates it against live structure, and fails with a reset hint on invalid history or drift. See [STATUS.md](https://github.com/supabase/lite/blob/HEAD/STATUS.md#row-level-security-rls). |
 | CSV input/output (`csv()`) | ✅ | ✅ | - | - | Via `text/csv` Accept/Content-Type |
 | Response utilities (`abortSignal`, `setHeader`, `throwOnError`, `maxAffected`) | ✅ | ✅ | - | - | |
-| CORS / `OPTIONS` preflight | ✅ | ✅ | - | - | Server-wide on `/auth`, `/rest`, `/storage`; preflight answered before auth, origin `*`, exposes `Content-Range`. |
+| CORS / `OPTIONS` preflight | ✅ | ✅ | - | - | Server-wide on `/auth`, `/rest`, `/storage`; preflight answered before auth, origin `*`, exposes `Content-Range`. Functions handlers own CORS and preflight responses. |
 | PostgreSQL extension declarations | ⚠️ | ⚠️ | `XL` | `extension-required` | SQLite treats `plpgsql`, `pgcrypto`, and `uuid-ossp` declarations plus their declarative schema/drop reconciliation as compatibility no-ops; unsupported creates and mutations fail during translation. PGlite runs only its configured extensions; PostgreSQL delegates to the server. See [STATUS.md](https://github.com/supabase/lite/blob/HEAD/STATUS.md#extension-statements). |
 | PL/pgSQL trigger functions | ⚠️ | ✅ | `XL` | `platform-limited` | SQLite inlines the documented trigger-body subset, resolves functions from ordered migration history, and preserves per-table trigger names for create/drop/introspection. Postgres runs PL/pgSQL natively. See [STATUS.md](https://github.com/supabase/lite/blob/HEAD/STATUS.md#plpgsql-trigger-functions). |
 | Full-text search (fts/plfts/phfts/wfts) | ⚠️ | ✅ | `L` | `platform-limited` | SQLite uses a LIKE-based lexeme approximation, not FTS5 ranking or tsvector semantics. See [STATUS.md](https://github.com/supabase/lite/blob/HEAD/STATUS.md#full-text-search). |
@@ -146,22 +146,23 @@ storage-api-compatible endpoints at `/storage/v1/*` (`app/src/storage/`), with p
 
 ## Edge Functions
 
-Planned, not started. Only config schemas exist (`app/src/config/functions.ts`, `app/src/config/edge_runtime.ts`): per-function `enabled`, `verify_jwt`, `import_map`, `entrypoint`, and runtime `policy`/`inspector_port`. No `/functions/v1/*` routes, no runtime.
-
-The client surface is small: `@supabase/functions-js` is essentially one method, `invoke(name, opts)` (plus `constructor`/`setAuth`). The cost is almost entirely server-side, and splits into two layers. **Request/response plumbing** (routing, auth injection, body/content-type handling, streaming, region headers, error classification) is ordinary HTTP work. **The runtime** (executing user TypeScript) is the hard part. Supabase uses a custom Rust/Deno `edge-runtime` with V8 isolates and a main/user worker model. Lite's path is a Web-API-compatible runtime adapter so you can plug in whichever executor fits the host (`vm`/`vm2`/`sval`, dynamic workers, Bun, Deno). This likely depends on Supabase Workers landing, since that runtime targets Node.js.
+Partial: Bun 1.4.2+ serves portable default-export `{ fetch }` handlers through `dev` / `start`. Workers run trusted code with host permissions; see the [canonical setup and compatibility guide](docs/other/edge-functions.mdx).
 
 | Capability | Status | Effort | Blocker | Notes |
 |------------|:------:|:------:|:-------:|-------|
-| Invoke routing (`/functions/v1/{name}`), auth + `apikey` injection | 🔄 | `M` | `-` | Proxy mode: forward to an external runtime; reuses existing Hono server + auth. |
-| Per-function JWT verification (`verify_jwt`) | 🔄 | `S` | `-` | Config schema + auth system already exist. |
-| Body / Content-Type handling + response dispatch | 🔄 | `M` | `-` | json / blob / text / formData; auto Content-Type detection. |
-| Streaming responses (SSE passthrough) | 🔄 | `M` | `-` | Return the raw `Response` for `text/event-stream`. |
-| Region routing (`x-region` / `forceFunctionRegion`) | 🔄 | `S` | `-` | Header + query passthrough; no real multi-region locally. |
-| Pluggable runtime (execute user code) | 🔄 | `XL` | `platform-limited` | Web-API-compatible runtime adapter with pluggable executors (`vm`/`vm2`/`sval`, dynamic workers, Bun, Deno) + worker lifecycle (`oneshot`/`per_worker`). Likely depends on Supabase Workers (Node.js-targeted) landing. |
-| Local `functions serve` (dev) + file-watch reload | 🔄 | `L` | `platform-limited` | Depends on the runtime above. |
-| Deployment / management API (deploy, list, get, update, delete, body) | 🔄 | `L` | `-` | ESZip bundling + function registry; lite needs its own tracking (SQLite/config). |
-| Secrets / env injection (`Deno.env`) | 🔄 | `S` | `-` | Inject `SUPABASE_URL`/keys + user secrets. |
-| Database Webhooks (`supabase_functions.hooks`, `http_request` trigger) | 🔄 | `M` | `platform-limited` | Distinct feature: in Postgres, row triggers fire HTTP via `pg_net`. Lite can hook the same events at the app layer (mutations flow through the Data API) and fetch out, avoiding `pg_net`. Caveat: misses out-of-band direct DB writes. |
+| Invoke routing (`/functions/v1/{name}`) | ✅ | - | - | SDK calls, nested paths, query, headers, body, and abort signal. Built-in handlers see `/name/subpath`, matching Supabase routing; advanced executors receive the original gateway URL. |
+| Per-function credential verification (`verify_jwt`) | ⚠️ | - | - | Defaults on; recognized configured/resolved API keys or HS256 JWTs. Authorization header takes precedence over `apikey`. JWTs need no user lookup. No asymmetric JWT/JWKS support. `false` permits keyless requests; handlers still own authorization. |
+| Body / Content-Type handling + response dispatch | ✅ | - | - | Web Request/Response transport; SDK serialization/decoding and HTTP/relay/fetch error classification. Handler-owned CORS and `OPTIONS`. |
+| Streaming responses (SSE passthrough) | ⚠️ | - | `platform-limited` | Incremental streams pass through without buffering; request abort and stream cancellation are forwarded. Handler-level abort/cancel callbacks depend on runtime behavior and are not guaranteed. |
+| Region routing (`x-region` / `forceFunctionRegion`) | ⚠️ | `S` | `-` | Header + query passthrough only; no actual region selection. |
+| Portable function source and dependencies | ⚠️ | - | `platform-limited` | Default-export `{ fetch }` TypeScript source, relative shared modules, and ordinary installed packages. Matching Supabase import mappings preserve source on graduation. No `Deno.serve`, Deno APIs, direct `npm:` / `jsr:` specifiers, or local Deno import-map resolution. |
+| Bun host + worker lifecycle | ⚠️ | - | `platform-limited` | Bun 1.4.2+ CLI; native workers in one process, `oneshot` (default) / `per_worker`, four workers, eight active requests per reused worker, startup/request deadlines, idle cleanup, and `503 BUSY` at capacity. Timeouts terminate workers. No permission sandbox. See the guide for lifecycle details. |
+| Trusted injected executor | ✅ | - | - | Advanced Web-API-compatible `fetch(request, { name, jwt, apiKeyType })`; an explicit driver overrides automatic discovery/runtime setup. Executes trusted host code with host permissions. |
+| Local `dev` file refresh | ⚠️ | - | `platform-limited` | Functions tree, configured entrypoints, project package manifest/Bun lock, and TOML/JSON function/runtime settings. Restart for executable configs, other server settings, imports outside watched paths, or `node_modules` changes. `start` does not watch. |
+| Separate `functions serve` command | 🔄 | `L` | `-` | Use normal `dev` / `start` for local execution. |
+| Deployment / management API (deploy, list, get, update, delete, body) | 🔄 | `L` | `-` | Use Supabase's deployment tooling; Lite does not implement these commands. |
+| Secrets / env injection (`process.env`) | ✅ | - | - | Worker environment from `supabase/functions/.env` plus managed local URL/key values. Host environment is not inherited through `process.env`; this is not a security boundary. No user identity is fabricated. |
+| Database Webhooks (`supabase_functions.hooks`, `http_request` trigger) | 🔄 | `M` | `platform-limited` | Separate from invoking an HTTP function; database-trigger delivery is not implemented. |
 
 ---
 
