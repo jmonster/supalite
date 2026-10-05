@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+import {
+  runUpgradeDryRun,
+  writeUpgradeDryRunReport,
+} from "./upgrade-dry-run.js";
 import as, { statSync, readFileSync } from "node:fs";
 import * as Fe from "node:path";
 import Fe__default, { join } from "node:path";
@@ -19829,9 +19833,13 @@ var Ce,
               }
               let o = await Ph(i);
               if (n) {
-                let R = await Oc(i, o);
-                (r(JSON.stringify(R, null, 2)),
-                  R.summary.upgrade_safe || process.exit(1));
+                let R = await runUpgradeDryRun({
+                  readiness: () => Ch(i, o),
+                  audit: () => Oc(i, o),
+                  rehearsal: () => Ih(i, o),
+                });
+                await writeUpgradeDryRunReport(R, process.stdout);
+                R.summary.upgrade_safe || process.exit(1);
                 return;
               }
               console.log(Ce.default.dim("Running readiness checks..."));
