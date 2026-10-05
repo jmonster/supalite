@@ -25,9 +25,9 @@ Files are MDX source (Astro Starlight). Site path -> file: `/` -> `index.mdx`, `
 ## Auth
 
 - [Auth overview](auth/overview.mdx): GoTrue-compatible Auth API for @supabase/lite: what's implemented, what's planned, and how it fits into supabase-js.
-- [Supported auth flows](auth/supported-flows.mdx): The 13 GoTrue-compatible Auth endpoints Supabase Lite implements, with supabase-js examples.
+- [Supported auth flows](auth/supported-flows.mdx): GoTrue-compatible Auth methods supported by this branch, including opt-in anonymous guest/email conversion.
 - [Email delivery & templates](auth/email.mdx): Configure the email driver, verification links, and customizable transactional email templates for Supabase Lite Auth.
-- [Auth: not supported](auth/not-supported.mdx): Anonymous sign-in, manual identity linking, the admin API, MFA, and OAuth providers beyond github/google are not implemented yet. What's planned vs. not planned, and the hosted-Supabase workaround.
+- [Auth: not supported](auth/not-supported.mdx): Manual identity linking, the admin API, MFA, and OAuth providers beyond github/google are not implemented yet. What's planned vs. not planned, and the hosted-Supabase workaround.
 
 ## Storage
 

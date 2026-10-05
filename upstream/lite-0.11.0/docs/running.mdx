@@ -70,7 +70,7 @@ The runtime metadata cache is disposable. Missing, corrupt, old, stale, or tampe
 
 On `SIGTERM` or `SIGINT`, `lite dev` and `lite start` set `/_system/ping` readiness to 503 and reject new Functions invocations. Repeated signals share the same shutdown. Admitted Functions can finish their response streams and authenticated calls to local Auth, Data, and Storage. Ordinary API requests remain accepted during this stage so those callbacks work; a supervisor should stop routing new traffic when readiness fails.
 
-Functions and HTTP share a five-second drain period. The listener then closes remaining connections, and workers/database cleanup use the remainder of a ten-second total budget. Cleanup errors or budget exhaustion exit nonzero. Use a process supervisor for a hard deadline if the main event loop stops responding.
+Functions may drain for up to five seconds with the API listener available for callbacks. After worker retirement, HTTP connections drain only until that same five-second deadline; if it has already passed, remaining connections are closed when HTTP shutdown begins. Worker retirement, HTTP shutdown, and database cleanup all count toward a ten-second total shutdown budget. Cleanup errors or budget exhaustion exit nonzero. Use a process supervisor for a hard deadline if the main event loop stops responding.
 
 After the old PID exits, restart `lite start` with the same configuration, SQLite database and sidecars, and filesystem Storage directory. Completed authenticated writes persist across graceful restart. Check interrupted writes before retrying: they may have committed without delivering a response. Run one process per project's durable files; request-triggered restart and scale-to-zero scheduling belong to the supervisor.
 

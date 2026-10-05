@@ -1,6 +1,10 @@
 # Supalite
 
-An experimental integration of open contributions to the published `@supabase/lite` **0.11.0** package. [Main](https://github.com/jmonster/supalite/tree/main) retains the editable baseline; the contributions remain separately reviewable and unmerged.
+An experimental integration of contributions to the published `@supabase/lite` **0.11.0** package. [Main](https://github.com/jmonster/supalite/tree/main) retains the editable baseline; the contributions remain separately reviewable and unmerged.
+
+- [JSONB compatibility (#19)](https://github.com/jmonster/supalite/pull/19): nested object and array containment in Data API filters, within documented input and runtime limits
+- Safe Auth/data migration: [preserve password sign-in (#21)](https://github.com/jmonster/supalite/pull/21), [preserve identity columns (#24)](https://github.com/jmonster/supalite/pull/24), and [stop on table-read errors (#30)](https://github.com/jmonster/supalite/pull/30)
+- [Authenticated graduation demo](#graduate-an-authenticated-app): preserve users, private tasks, attachment bytes and portable TypeScript function source when moving to the full Supabase stack (run locally)
 
 ## Graduate an authenticated app
 
@@ -20,8 +24,7 @@ Bun hosts Lite, SQLite and trusted function workers in one process. Functions us
 ## Evidence and review
 
 - [Lifecycle measurements](docs/evidence/README.md): reproducible restarts, persisted Auth/data/private-file checks, timing, memory and measurement scope
-- Focused fixes: [repeated filters (#18)](https://github.com/jmonster/supalite/pull/18), [password sign-in after upgrade (#21)](https://github.com/jmonster/supalite/pull/21), and [singular-mutation rollback (#34)](https://github.com/jmonster/supalite/pull/34)
-- [Further contributions](https://github.com/jmonster/supalite/pulls), [JSONB design](docs/design-and-porting.md) and [benchmark reproduction](docs/performance.md)
+- [JSONB design](docs/design-and-porting.md) and [benchmark reproduction](docs/performance.md)
 
 Optionally run `bun run test` for the supported suite. Tests import the tracked implementation; [native-Node streaming cases remain skipped under Bun](docs/streaming-upgrade.md#verification).
 

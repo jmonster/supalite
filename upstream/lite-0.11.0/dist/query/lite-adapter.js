@@ -57,6 +57,16 @@ export function tryJsonbContainment(
   const path = resolvers.parsePath(column);
   const info = findColumn(path.col, context);
   if ((info?.pg_type ?? info?.type)?.toLowerCase() !== "jsonb") return null;
+  const literal = operators[LITERAL_KEYS[operator]];
+  // Match the planner's reference/query classifications before treating a
+  // direct AST operand as JSON. REST literals have explicit raw metadata, so
+  // ordinary JSON objects may still contain "$ref" or "type": "query".
+  if (typeof literal !== "string" && value !== null && typeof value === "object") {
+    if ("$ref" in value)
+      throw new Error(`Unsupported ref operator: ${operator}`);
+    if (value.type === "query")
+      throw new Error("JSONB containment requires a constant JSON filter");
+  }
   if (path.parts.some((part) => part.op !== "->")) {
     throw new JsonbFilterError(
       "JSONB containment requires JSON extraction (->), not text extraction (->>)",
@@ -64,7 +74,6 @@ export function tryJsonbContainment(
     );
   }
   let filter;
-  const literal = operators[LITERAL_KEYS[operator]];
   if (typeof literal === "string") {
     try {
       filter = JSON.parse(literal);

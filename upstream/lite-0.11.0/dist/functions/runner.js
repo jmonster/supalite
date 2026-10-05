@@ -109,9 +109,11 @@ export async function prepareFunctions(app, {
   function retire(slot) {
     if (slot.closing) return slot.closing;
     clearTimeout(slot.idle);
-    slot.abort.abort(new Error("Function worker retired"));
-    return slot.closing = slot.ready.then(runtime => runtime.close(), error => { if (error.shutdownFailed) throw error; }).then(() => workers.delete(slot))
+    // Abort listeners may synchronously release the last request and retire again.
+    slot.closing = slot.ready.then(runtime => runtime.close(), error => { if (error.shutdownFailed) throw error; }).then(() => workers.delete(slot))
       .catch(error => console.error(`[functions] Could not stop ${slot.name}; restart Lite to release its capacity:`, error.message));
+    slot.abort.abort(new Error("Function worker retired"));
+    return slot.closing;
   }
   function release(slot) {
     slot.active--;

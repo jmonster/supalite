@@ -356,21 +356,17 @@ All operators are parsed into the AST. The "Status" column reflects whether a wo
 
 | Method          | SQLite | Postgres | Notes                                                                                         |
 |-----------------|--------|----------|-----------------------------------------------------------------------------------------------|
-| `contains()`    | ⚠️     | ✅        | SQLite: scalar arrays via `json_each`; shallow objects via `json_extract`. See caveats below. |
-| `containedBy()` | ⚠️     | ✅        | SQLite: scalar arrays via `NOT EXISTS` over `json_each`. Objects/nested not supported.        |
+| `contains()`    | ⚠️     | ✅        | SQLite Data API: nested-object/array containment on `jsonb` columns within the limits below; SQL-array behavior is unchanged. |
+| `containedBy()` | ⚠️     | ✅        | SQLite Data API: nested-object/array contained-by on `jsonb` columns within the limits below; SQL-array behavior is unchanged. |
 | `overlaps()`    | ⚠️     | ✅        | SQLite: scalar arrays via `EXISTS` over `json_each`. Objects/nested not supported.            |
 | `->` / `->>`    | ✅      | ✅        | JSON path in `select`, `order`, and `where` filters                                           |
 | `jsonb` column  | ✅      | ✅        | Stored as TEXT + `json_valid()` check on SQLite                                               |
 
-**SQLite containment caveats:**
+**SQLite containment scope:**
 
-- ✅ **Arrays of scalars** (`tags=cs.{a,b}`): matches Postgres `@>` semantics via `json_each`.
-- ✅ **Shallow objects with scalar values** (`meta=cs.{"theme":"dark"}`): matched per-key with `json_extract(col, '$.key') = value`.
-- ✅ **NULL columns** are safely skipped (no `json_each(NULL)` error).
-- ✅ **Empty array input:** `cs []` → always true for non-null; `cd []` → only empty array matches; `ov []` → always false.
-- ❌ **Arrays of objects** (`[{a:1}] @> [{a:1}]`): `json_each` yields JSON text for object elements; equality against JS-serialized binds is not reliable. _Follow-up:_ emit a per-element `EXISTS` with recursive key matching, or a correlated subquery comparing `json_extract` of each target key.
-- ❌ **Nested objects in `cs` filter** (`data=cs.{"user":{"id":1}}`): `json_extract` returns the sub-object as JSON text which won't equal the JS-object bind. _Follow-up:_ recursively walk the filter object and emit one `json_extract` comparison per leaf scalar key (`json_extract(col, '$.user.id') = 1`).
-- ❌ **`cd`/`ov` with object values:** the operators currently require array inputs. _Follow-up:_ define semantics (does `cd` mean "all top-level keys in set"?) and add handlers.
+- Data API `contains()` / `containedBy()` on `jsonb` columns support nested objects and arrays, including same-element array-of-object matching.
+- SQL NULL propagates; JSON null, missing members and container types remain distinct. See the [JSONB design and input/runtime limits](../../docs/design-and-porting.md#limits-and-input-boundary).
+- Plain `json`, SQL-array operators and `overlaps()` retain their existing behavior. This does not add PostgreSQL JSONB operators to direct SQLite SQL.
 
 ### Full-Text Search
 
@@ -529,6 +525,7 @@ Auth behaves identically across database backends, with one caveat: on Cloudflar
 | Method                 | Endpoint                               | Notes                                                                 |
 |------------------------|----------------------------------------|-----------------------------------------------------------------------|
 | `signUp()`             | `POST /signup`                         | Email/password, optional metadata, email confirmation; repeated unconfirmed signup honors `auth.email.max_frequency` and rotates the confirmation OTP after expiry. If confirmations are disabled later, retrying implicitly confirms the existing account |
+| `signInAnonymously()` | `POST /signup` | Opt-in guest session and email/password conversion with the same user ID; [controlled deployment and backend limits](../../docs/anonymous-onboarding.md) |
 | `signInWithPassword()` | `POST /token?grant_type=password`      | JWT + refresh token                                                   |
 | `signInWithOtp()`      | `POST /otp`                            | Magic link / OTP via email                                            |
 | `verifyOtp()`          | `POST /verify`, `GET /verify`          | signup, magiclink, recovery, email_change, reauthentication. Numeric code + `token_hash` both verify against the DB (durable on Workers); `otp_expiry`/`otp_length` honored. `GET /verify` 303-redirects to `redirect_to` (allow-list checked) |
@@ -579,7 +576,6 @@ CLI: `lite init` generates whichever key(s) are missing into root `.env` (per-va
 
 | Method                      | Notes                                                         |
 |-----------------------------|---------------------------------------------------------------|
-| `signInAnonymously()`       | Create anonymous session                                      |
 | `linkIdentity()`            | Manual link of an OAuth identity to an existing user (automatic linking on OAuth sign-in already works) |
 | `unlinkIdentity()`          | Remove linked identity                                        |
 | `admin.createUser()`        | Direct user creation (skip confirmation)                      |
@@ -641,14 +637,14 @@ These methods exist in `@supabase/supabase-js` but are client-side concerns, not
 
 | Status            | Count |
 |-------------------|-------|
-| ✅ Implemented     | 13    |
-| 🔄 Planned        | 13    |
+| ✅ Implemented     | 14    |
+| 🔄 Planned        | 12    |
 | ⚫ Not Planned     | 27    |
 | ⚫ Client-side N/A | 10    |
 
 ### Auth spec: SQLite skip breakdown
 
-The 223 cases skipped against the supabase-spec Auth corpus break down by deferred feature. Generated by `cd app && bun run test:spec:auth:analyze:sqlite` (writes `.context/auth-analysis-sqlite.json`). The 24 `oauth_redirect.json` cases now pass, closing the `oauth` category; they cover github/google authorize redirects, provider config validation, PKCE parameter persistence/validation, and callback error handling. The corpus has no successful provider callback and no `/token?grant_type=pkce` exchange, so that coverage lives in the focused mock-provider tests in `app/test/auth/oauth-*.test.ts` (implicit and PKCE round-trips, account linking, concurrency).
+In the upstream 0.11.0 snapshot, the 223 cases skipped against the supabase-spec Auth corpus break down by deferred feature. Generated by `cd app && bun run test:spec:auth:analyze:sqlite` (writes `.context/auth-analysis-sqlite.json`). The 24 `oauth_redirect.json` cases now pass, closing the `oauth` category; they cover github/google authorize redirects, provider config validation, PKCE parameter persistence/validation, and callback error handling. The corpus has no successful provider callback and no `/token?grant_type=pkce` exchange, so that coverage lives in the focused mock-provider tests in `app/test/auth/oauth-*.test.ts` (implicit and PKCE round-trips, account linking, concurrency).
 
 | Category                        | Skipped | Why                                                                |
 |---------------------------------|--------:|--------------------------------------------------------------------|
@@ -890,7 +886,7 @@ Mirrors upstream behavior documented in [`internal/docs/cli/environment.md`](htt
 
 ## Upgrade to Supabase
 
-See [UPGRADE.md](https://github.com/supabase/lite/blob/HEAD/UPGRADE.md) for the upgrade command contract, target behavior, known gaps, and test strategy.
+See [UPGRADE.md](UPGRADE.md) for the upgrade command contract, target behavior, known gaps, and test strategy.
 
 | Capability                 | Status | Notes                                                                                           |
 |----------------------------|--------|-------------------------------------------------------------------------------------------------|
@@ -898,11 +894,14 @@ See [UPGRADE.md](https://github.com/supabase/lite/blob/HEAD/UPGRADE.md) for the 
 | Auth schema migration      | ⚠️     | Core `auth.*` divergences are documented; auth export has explicit local/Supabase generated-column rules. |
 | User table data migration  | ✅     | Emits FK-ordered INSERTs, deserializes SQLite shim-backed fields before Postgres literal generation, and resets serial/bigserial sequences after explicit migrated IDs. |
 | SQLite shim health audit   | ✅     | `lite upgrade --dry-run` scans shim-backed fields with affected counts, sample raw values, and sample row IDs; `--json` switches the audit output to structured JSON. |
-| Storage/realtime migration | 🔄     | Upgrade command warns; migration support is deferred until those services land.                  |
+| Local filesystem Storage migration | ⚠️ | Quiescent `sqlite-postgres` source, stock CLI filesystem adapter and fresh separate local target; identity/metadata and downloaded bytes verified. Hosted/custom-adapter routes fail preflight. See [limits](UPGRADE.md#local-filesystem-storage). |
+| Realtime config migration | 🔄 | Not migrated; the command warns and continues. |
 
 ---
 
 ## Testing
+
+These test counts and `app/` / `packages/` commands are preserved upstream 0.11.0 results, not fresh results for this branch. See the [repository README](../../README.md) for this checkout's checks.
 
 | Test Suite | Passing           | Skipped     | Failed          | Assertions        | Files          |
 |------------|-------------------|-------------|-----------------|-------------------|----------------|

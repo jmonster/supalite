@@ -226,3 +226,42 @@ test("reload rejects new requests without accumulating a waiting queue", async (
   }
   await pendingReload;
 });
+
+test("active stream retirement reports an unconfirmed close once and retains capacity", async () => {
+  const root = await mkdtemp(join(process.cwd(), ".functions-retirement-"));
+  const entrypoint = join(root, "functions/echo/index.ts");
+  const NativeWorker = globalThis.Worker, originalError = console.error;
+  const diagnostics = [];
+  let runner;
+  // The native worker still terminates; only its close acknowledgement is hidden.
+  globalThis.Worker = class extends NativeWorker {
+    addEventListener(type, ...args) { if (type !== "close") super.addEventListener(type, ...args); }
+  };
+  console.error = (...args) => diagnostics.push(args.join(" "));
+  try {
+    await mkdir(dirname(entrypoint), { recursive: true });
+    await writeFile(entrypoint, source);
+    runner = await prepareFunctions({ config: { edge_runtime: { policy: "per_worker" } }, drivers: {} }, {
+      configPath: join(root, "config.toml"), port: 54321, maxWorkers: 1, shutdownTimeoutMs: 50,
+    });
+    const response = await runner.fetch(new Request("http://local/functions/v1/echo/stream"));
+    const reader = response.body.getReader();
+    await reader.read();
+    const ended = assert.rejects(reader.read(), /Function worker retired/);
+    await runner.reload();
+    await ended;
+    assert.equal(diagnostics.filter(message => message.includes("Could not stop echo")).length, 1);
+    assert.match(diagnostics.join("\n"), /Bun function worker did not emit close after termination/);
+    const busy = await runner.fetch(new Request("http://local/functions/v1/echo"));
+    assert.equal(busy.status, 503);
+    assert.equal((await busy.json()).code, "BUSY", "unconfirmed retirement must not release worker capacity");
+  } finally {
+    try {
+      // A retained slot can also make final shutdown report an unconfirmed close.
+      await runner?.close().catch(error => assert.match(error.message, /Function worker shutdown was not confirmed/));
+    } finally {
+      globalThis.Worker = NativeWorker; console.error = originalError;
+      await rm(root, { recursive: true, force: true });
+    }
+  }
+});

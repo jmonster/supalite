@@ -25,7 +25,7 @@ Anchors below point to the corresponding STATUS.md section. If a limitation here
 ## supabase-js (SQLite path)
 
 - `rpc()` → not supported. Use a regular HTTP endpoint for custom logic. See [Control & Specialized](https://github.com/supabase/lite/blob/HEAD/STATUS.md#control--specialized).
-- `contains` / `containedBy` / `overlaps` → partial. Arrays of scalars and shallow objects work; arrays of objects and nested objects do not. See [Array & JSON Filters](https://github.com/supabase/lite/blob/HEAD/STATUS.md#array--json-filters).
+- Data API `contains` / `containedBy` on `jsonb` columns support nested objects and arrays within [filter, numeric and runtime limits](../../docs/design-and-porting.md#limits-and-input-boundary). Plain `json`, SQL-array operators and `overlaps` retain their existing behavior; direct SQLite SQL does not gain PostgreSQL JSONB operators.
 - `textSearch` (fts/plfts/phfts/wfts) → not implemented on SQLite. See [Full-Text Search](https://github.com/supabase/lite/blob/HEAD/STATUS.md#full-text-search).
 - `regexMatch` / `regexIMatch` → partial. Only simple anchored/literal patterns (`^foo`, `bar$`, substrings) work; classes, quantifiers and alternation fail. See [Regex](https://github.com/supabase/lite/blob/HEAD/STATUS.md#regex).
 - Range operators (`rangeGt`, …) and quantified comparisons (`eq(any)`, …) → not implemented on SQLite. See [Range Operators](https://github.com/supabase/lite/blob/HEAD/STATUS.md#range-operators) and [Quantified Comparison Operators](https://github.com/supabase/lite/blob/HEAD/STATUS.md#quantified-comparison-operators).
@@ -33,6 +33,8 @@ Anchors below point to the corresponding STATUS.md section. If a limitation here
 - `rollback()` / `Prefer: tx=rollback` → not implemented. The response echoes `Preference-Applied: tx=rollback`, but the write still commits. Do not use it for cleanup. See [Control & Specialized](https://github.com/supabase/lite/blob/HEAD/STATUS.md#control--specialized).
 
 ## Auth (shipped with caveats)
+
+- Anonymous guest/email conversion is opt-in for controlled deployments; CAPTCHA verification, anonymous IP rate limits and cleanup are not provided. See [deployment limits](../../docs/anonymous-onboarding.md#deployment-boundary).
 
 - `double_confirm_changes = true` (secure email change) is spec-compatible but **not** GoTrue's full two-mailbox flow: it finalizes from the current-email confirmation only, so it does not require the new mailbox to also confirm. It still prevents a session thief from changing the email using only a mailbox they control. See [Auth email delivery & templates](https://github.com/supabase/lite/blob/HEAD/docs/src/content/docs/auth/email.mdx).
 - OAuth / social sign-in (`signInWithOAuth`, `exchangeCodeForSession`) only implements `github` and `google`. Enabling any other configured provider (including `apple`) returns "provider ... is not yet implemented". Automatic account linking on a verified-email match works; manual `linkIdentity()`/`unlinkIdentity()` do not. On the D1 backend, multi-statement Auth transaction spans (OAuth callback/token writes, email-change and other OTP verification) run best-effort without a wrapping transaction (D1 has no callback transaction API; single-statement guards still prevent code/state reuse) — all other backends are fully transactional. See [Auth API: Implemented](https://github.com/supabase/lite/blob/HEAD/STATUS.md#auth-api-gotrue-compatible).
@@ -44,7 +46,7 @@ Anchors below point to the corresponding STATUS.md section. If a limitation here
 
 ## Auth (planned, not yet shipped)
 
-- Other OAuth providers (Apple and the rest of the 18-provider config surface), anonymous sign-in, manual identity linking, admin API, MFA → planned. See [Auth API: Planned](https://github.com/supabase/lite/blob/HEAD/STATUS.md#-planned).
+- Other OAuth providers (Apple and the rest of the 18-provider config surface), manual identity linking, admin API, MFA → planned. See [Auth API: Planned](https://github.com/supabase/lite/blob/HEAD/STATUS.md#-planned).
 
 ## Runtime / dev
 

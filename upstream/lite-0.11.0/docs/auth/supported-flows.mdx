@@ -1,6 +1,6 @@
 ---
 title: "Supported auth flows"
-description: "The 13 GoTrue-compatible Auth endpoints Supabase Lite implements, with supabase-js examples."
+description: "The GoTrue-compatible Auth methods supported by this branch, with supabase-js examples."
 ---
 
 import { Aside } from '@astrojs/starlight/components';
@@ -10,6 +10,7 @@ Each method below hits a real backend endpoint at `/auth/v1/*` and behaves like 
 | `supabase-js` method | Endpoint | Notes |
 |---|---|---|
 | [`signUp()`](https://supabase.com/docs/reference/javascript/auth-signup) | `POST /signup` | Email/password, optional metadata, email confirmation |
+| `signInAnonymously()` | `POST /signup` | Opt-in guest session and email/password conversion; [workflow, abuse-protection and backend limits](../../../../docs/anonymous-onboarding.md) |
 | [`signInWithPassword()`](https://supabase.com/docs/guides/auth/passwords) | `POST /token?grant_type=password` | Returns JWT + refresh token |
 | [`signInWithOtp()`](https://supabase.com/docs/guides/auth/auth-email-otp) | `POST /otp` | Magic link / OTP via email |
 | [`verifyOtp()`](https://supabase.com/docs/reference/javascript/auth-verifyotp) | `POST /verify` | signup, magiclink, recovery, email_change, reauthentication. Both the numeric code (`{ email, token }`) and the link's `token_hash` verify against the DB |
