@@ -891,7 +891,7 @@ Mirrors upstream behavior documented in [`internal/docs/cli/environment.md`](htt
 
 ## Upgrade to Supabase
 
-See [UPGRADE.md](https://github.com/supabase/lite/blob/HEAD/UPGRADE.md) for the upgrade command contract, target behavior, known gaps, and test strategy.
+See [UPGRADE.md](UPGRADE.md) for the upgrade command contract, target behavior, known gaps, and test strategy.
 
 | Capability                 | Status | Notes                                                                                           |
 |----------------------------|--------|-------------------------------------------------------------------------------------------------|
@@ -899,11 +899,14 @@ See [UPGRADE.md](https://github.com/supabase/lite/blob/HEAD/UPGRADE.md) for the 
 | Auth schema migration      | ⚠️     | Core `auth.*` divergences are documented; auth export has explicit local/Supabase generated-column rules. |
 | User table data migration  | ✅     | Emits FK-ordered INSERTs, deserializes SQLite shim-backed fields before Postgres literal generation, and resets serial/bigserial sequences after explicit migrated IDs. |
 | SQLite shim health audit   | ✅     | `lite upgrade --dry-run` scans shim-backed fields with affected counts, sample raw values, and sample row IDs; `--json` switches the audit output to structured JSON. |
-| Storage/realtime migration | 🔄     | Upgrade command warns; migration support is deferred until those services land.                  |
+| Local filesystem Storage migration | ⚠️ | Quiescent `sqlite-postgres` source, stock CLI filesystem adapter and fresh separate local target; identity/metadata and downloaded bytes verified. Hosted/custom-adapter routes fail preflight. See [limits](UPGRADE.md#local-filesystem-storage). |
+| Realtime config migration | 🔄 | Not migrated; the command warns and continues. |
 
 ---
 
 ## Testing
+
+These test counts and `app/` / `packages/` commands are preserved upstream 0.11.0 results, not fresh results for this branch. See the [repository README](../../README.md) for this checkout's checks.
 
 | Test Suite | Passing           | Skipped     | Failed          | Assertions        | Files          |
 |------------|-------------------|-------------|-----------------|-------------------|----------------|
