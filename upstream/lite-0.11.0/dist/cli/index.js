@@ -4118,7 +4118,12 @@ async function js(e, t = {}) {
   }
   let n = ys(),
     r = t.port ?? 3e3,
-    s = t.host ?? "127.0.0.1";
+    s = t.host ?? "127.0.0.1",
+    draining = false;
+  const fetchRequest = (app, request, context) =>
+    draining && new URL(request.url).pathname === "/_system/ping"
+      ? new Response("Shutting down", { status: 503 })
+      : app.fetch(request, context);
   if (Hn()) {
     let i = await Promise.resolve()
         .then(() => (Jp(), Xp))
@@ -4128,16 +4133,23 @@ async function js(e, t = {}) {
       let a = Yp(e, n, i);
       o = Bun.serve({
         fetch: (l) =>
-          a.fetch(l, { peerAddress: o?.requestIP(l)?.address ?? null }),
+          fetchRequest(a, l, { peerAddress: o?.requestIP(l)?.address ?? null }),
         hostname: s,
         port: r,
       });
     } catch (a) {
       throw (pa(a) && fa(r), a);
     }
-    return async () => {
-      await o.stop();
-    };
+    let stopping;
+    return Object.assign((deadline = Date.now() + 5000) => stopping ??= (async () => {
+      // stop(false) alone can wait forever for an incomplete upload or stream.
+      const timer = setTimeout(() => {
+        console.warn("Shutdown grace expired; closing remaining HTTP connections");
+        void o.stop(true);
+      }, Math.max(0, deadline - Date.now()));
+      try { await o.stop(false); }
+      finally { clearTimeout(timer); }
+    })(), { beginShutdown: () => { draining = true; } });
   } else {
     let { createAdaptorServer: i } = await import("@hono/node-server"),
       o = await import("@hono/node-server/serve-static").then(
@@ -4147,7 +4159,7 @@ async function js(e, t = {}) {
       l = i({
         fetch: (c, ...p) => {
           let u = p[0]?.incoming;
-          return a.fetch(c, { peerAddress: u?.socket?.remoteAddress ?? null });
+          return fetchRequest(a, c, { peerAddress: u?.socket?.remoteAddress ?? null });
         },
       });
     try {
@@ -4155,12 +4167,17 @@ async function js(e, t = {}) {
     } catch (c) {
       throw (pa(c) && fa(r), c);
     }
-    return () =>
-      new Promise((c) => {
-        l.close(() => {
-          c(void 0);
-        });
+    let stopping;
+    return Object.assign((deadline = Date.now() + 5000) => stopping ??= new Promise((c, reject) => {
+      const timer = setTimeout(() => {
+        console.warn("Shutdown grace expired; closing remaining HTTP connections");
+        l.closeAllConnections();
+      }, Math.max(0, deadline - Date.now()));
+      l.close(error => {
+        clearTimeout(timer);
+        if (error) reject(error); else c();
       });
+    }), { beginShutdown: () => { draining = true; } });
   }
 }
 function Yp(e, t, n) {
@@ -4850,12 +4867,21 @@ function zs(e) {
     n = async () => {
       if (!t) {
         t = true;
+        // A single absolute budget covers watchers, functions, HTTP and DB close.
+        // Reserve the final five seconds for forced worker/connection cleanup.
+        const deadline = Date.now() + 10000;
+        const timer = setTimeout(() => {
+          console.error("Shutdown did not complete within 10000ms; forcing process exit");
+          process.exit(1);
+        }, Math.max(0, deadline - Date.now()));
+        let code = 0;
         try {
-          await e();
+          await e(deadline - 5000);
         } catch (r) {
+          code = 1;
           He(r);
-        }
-        process.exit(0);
+        } finally { clearTimeout(timer); }
+        process.exit(code);
       }
     };
   (process.on("SIGINT", n), process.on("SIGTERM", n));
@@ -6077,8 +6103,11 @@ var mr,
                 let c = os();
                 (c && console.log(mr.default.yellow(` \u26A0 ${c}`)),
                   await i.connection.ping(),
-                  zs(async () => {
-                    (await functions?.close(), await l(), await i.connection.close());
+                  zs(async (drainDeadline) => {
+                    l.beginShutdown();
+                    await functions?.close({ drainTimeoutMs: Math.max(0, drainDeadline - Date.now()) });
+                    await l(drainDeadline);
+                    await i.connection.close();
                   }));
               },
               (r) => {
@@ -11927,14 +11956,16 @@ var qe,
                         }
                       }));
                   }, 200);
-                zs(async () => {
+                zs(async (drainDeadline) => {
+                  c.beginShutdown();
+                  const stopFunctions = functions?.close({ drainTimeoutMs: Math.max(0, drainDeadline - Date.now()) });
                   (watching = false,
                     clearTimeout(m),
                     clearTimeout(functionsReloadTimer),
                     await Promise.all([u(), h?.close()]),
                     await functionsReload,
-                    await functions?.close(),
-                    await c(),
+                    await stopFunctions,
+                    await c(drainDeadline),
                     await o.connection.close());
                 });
               },
