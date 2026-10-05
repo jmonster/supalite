@@ -15729,7 +15729,13 @@ function fh(t, e) {
     }
     if (o.code === "42P17")
       return T(500, o.code, o.message, o.detail ?? null, o.hint ?? null);
-    if (a === "42" || a === "22" || a === "21" || o.code === "23502") {
+    if (
+      a === "42" ||
+      a === "22" ||
+      a === "21" ||
+      o.code === "23502" ||
+      o.code === "23514"
+    ) {
       let l = o.message,
         c = i ? lh(i) : void 0;
       if (o.code === "42703" && c) {
@@ -26951,6 +26957,18 @@ var bi = class t extends Ps {
       let n = e,
         r = n?.cause?.code ?? n?.code,
         s = n?.cause?.message ?? n?.message ?? String(e);
+      // node:sqlite reports extended result codes in errcode, not code.
+      if (r === "ERR_SQLITE_ERROR")
+        r =
+          {
+            275: "SQLITE_CONSTRAINT_CHECK",
+            787: "SQLITE_CONSTRAINT_FOREIGNKEY",
+            1299: "SQLITE_CONSTRAINT_NOTNULL",
+            1555: "SQLITE_CONSTRAINT_PRIMARYKEY",
+            2067: "SQLITE_CONSTRAINT_UNIQUE",
+          }[n?.cause?.errcode ?? n?.errcode] ?? r;
+      if (r === "SQLITE_CONSTRAINT_CHECK")
+        return Object.assign(new Error(s), { code: "23514", detail: s });
       if (r === "SQLITE_CONSTRAINT_NOTNULL")
         return Object.assign(new Error(s), { code: "23502", detail: s });
       if (
