@@ -22812,7 +22812,7 @@ var VR = s.object({
           e.destinationBucket,
           t.req.header("x-upsert") === "true",
         );
-      return t.json({ key: r.key }, 200);
+      return t.json({ Key: `${e.destinationBucket ?? e.bucketId}/${r.key}` }, 200);
     })
     .get("/object/info/:bucketId/*", async (t) => {
       let e = t.req.param("bucketId"),

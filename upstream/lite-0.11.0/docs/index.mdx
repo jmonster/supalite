@@ -24,7 +24,7 @@ Supabase Lite is pre-1.0 / alpha. APIs, config shape, and the on-disk format may
 |---|---|---|
 | Data API | Supported | 54/74 `supabase-js` query-builder methods on SQLite, 72/74 on Postgres/PGlite. Core CRUD, filters, embedding, and RLS all work. See [Compatibility](/compatibility). |
 | Auth | Partial | 13 backend endpoints implemented (email/password, OTP, sessions, password recovery, OAuth sign-in for `github`/`google`). Other OAuth providers, anonymous sign-in, manual identity linking, admin API, and MFA are planned. See [Auth overview](/auth/overview). |
-| Storage | Experimental | 20/20 `supabase-js` methods implemented, gated behind `EXPERIMENTAL_STORAGE`. Role-based access and RLS on storage objects are still pending. See [Storage overview](/storage/overview). |
+| Storage | Experimental | 20/20 `supabase-js` methods implemented, gated behind `EXPERIMENTAL_STORAGE`. See [Storage access-control behavior and policy limits](storage/overview.mdx#whats-implemented) and [remaining limitations](storage/limitations.mdx). |
 | Realtime | Not yet | Config schema exists; no WebSocket server or channels yet. See [Realtime](/other/realtime). |
 | Edge Functions | Not yet | Config schema exists; no runtime or `/functions/v1` routes yet. See [Edge Functions](/other/edge-functions). |
 
