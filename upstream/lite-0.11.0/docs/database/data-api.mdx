@@ -42,7 +42,7 @@ Limits: there's no namespace isolation, an embed across two schemas returns `PGR
 
 ### `contains()` / `containedBy()` / `overlaps()`
 
-Scalar arrays and shallow objects with scalar values work (`tags=cs.{a,b}`, `meta=cs.{"theme":"dark"}`), matched via `json_each`/`json_extract`. What doesn't work: arrays of objects (`[{a:1}] @> [{a:1}]`) and nested objects in the filter value (`data=cs.{"user":{"id":1}}`), because `json_extract` returns the sub-value as JSON text, which doesn't compare equal to the JS-object bind. `cd`/`ov` also currently require array inputs.
+On columns declared `jsonb`, Data API `contains()` / `containedBy()` support nested objects and arrays, including same-element array-of-object matching. Pass objects directly; serialize JSON arrays and scalars with `JSON.stringify` so Supabase-js does not encode them as SQL arrays. See [input and runtime limits](../../../../docs/design-and-porting.md#limits-and-input-boundary). Plain `json`, SQL-array operators and `overlaps()` keep their existing behavior; this is not general PostgreSQL-operator support in direct SQLite SQL.
 
 ### `textSearch()` (all variants: `fts`, `plfts`, `phfts`, `wfts`)
 

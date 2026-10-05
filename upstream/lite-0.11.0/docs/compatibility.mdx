@@ -31,7 +31,7 @@ CRUD, filtering, embedding, and RLS over your tables. This is the most complete 
 | Pattern matching (like/ilike + quantified) | ✅ | ✅ | ✅ | 6/6 on all backends |
 | Resource embedding (FK joins, `!inner`, spreads, nested, aggregates) | ✅ | ✅ | ✅ | 5/5 on all backends |
 | RLS enforcement | ✅ | ✅ | ✅ | App-layer rewrite on SQLite, native on Postgres/PGlite |
-| Array/JSON containment (`contains`, `containedBy`, `overlaps`) | ⚠️ | ✅ | ✅ | Scalar arrays + shallow objects only on SQLite |
+| Array/JSON containment (`contains`, `containedBy`, `overlaps`) | ⚠️ | ✅ | ✅ | Nested Data API `jsonb` `contains`/`containedBy` within [documented limits](../../../docs/design-and-porting.md#limits-and-input-boundary); SQL-array operators and `overlaps` unchanged |
 | Full-text search (fts/plfts/phfts/wfts) | ⚠️ | ✅ | ✅ | LIKE-based lexeme approximation on SQLite, not FTS5/tsvector |
 | Regex (`regexMatch`/`regexIMatch`) | ⚠️ | ✅ | ✅ | Simple anchored/literal patterns only on SQLite |
 | `schema()` (multi-schema) | ⚠️ | ✅ | ✅ | On `sqlite-postgres`, schemas in `api.schemas` are served through `Accept-Profile`/`Content-Profile` (non-public tables are stored as one dotted identifier). No namespace isolation, embeds across two schemas return `PGRST205`, and the bare `sqlite` driver has no schema handling |

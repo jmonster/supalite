@@ -358,21 +358,17 @@ All operators are parsed into the AST. The "Status" column reflects whether a wo
 
 | Method          | SQLite | Postgres | Notes                                                                                         |
 |-----------------|--------|----------|-----------------------------------------------------------------------------------------------|
-| `contains()`    | ⚠️     | ✅        | SQLite: scalar arrays via `json_each`; shallow objects via `json_extract`. See caveats below. |
-| `containedBy()` | ⚠️     | ✅        | SQLite: scalar arrays via `NOT EXISTS` over `json_each`. Objects/nested not supported.        |
+| `contains()`    | ⚠️     | ✅        | SQLite Data API: nested-object/array containment on `jsonb` columns within the limits below; SQL-array behavior is unchanged. |
+| `containedBy()` | ⚠️     | ✅        | SQLite Data API: nested-object/array contained-by on `jsonb` columns within the limits below; SQL-array behavior is unchanged. |
 | `overlaps()`    | ⚠️     | ✅        | SQLite: scalar arrays via `EXISTS` over `json_each`. Objects/nested not supported.            |
 | `->` / `->>`    | ✅      | ✅        | JSON path in `select`, `order`, and `where` filters                                           |
 | `jsonb` column  | ✅      | ✅        | Stored as TEXT + `json_valid()` check on SQLite                                               |
 
-**SQLite containment caveats:**
+**SQLite containment scope:**
 
-- ✅ **Arrays of scalars** (`tags=cs.{a,b}`): matches Postgres `@>` semantics via `json_each`.
-- ✅ **Shallow objects with scalar values** (`meta=cs.{"theme":"dark"}`): matched per-key with `json_extract(col, '$.key') = value`.
-- ✅ **NULL columns** are safely skipped (no `json_each(NULL)` error).
-- ✅ **Empty array input:** `cs []` → always true for non-null; `cd []` → only empty array matches; `ov []` → always false.
-- ❌ **Arrays of objects** (`[{a:1}] @> [{a:1}]`): `json_each` yields JSON text for object elements; equality against JS-serialized binds is not reliable. _Follow-up:_ emit a per-element `EXISTS` with recursive key matching, or a correlated subquery comparing `json_extract` of each target key.
-- ❌ **Nested objects in `cs` filter** (`data=cs.{"user":{"id":1}}`): `json_extract` returns the sub-object as JSON text which won't equal the JS-object bind. _Follow-up:_ recursively walk the filter object and emit one `json_extract` comparison per leaf scalar key (`json_extract(col, '$.user.id') = 1`).
-- ❌ **`cd`/`ov` with object values:** the operators currently require array inputs. _Follow-up:_ define semantics (does `cd` mean "all top-level keys in set"?) and add handlers.
+- Data API `contains()` / `containedBy()` on `jsonb` columns support nested objects and arrays, including same-element array-of-object matching.
+- SQL NULL propagates; JSON null, missing members and container types remain distinct. See the [JSONB design and input/runtime limits](../../docs/design-and-porting.md#limits-and-input-boundary).
+- Plain `json`, SQL-array operators and `overlaps()` retain their existing behavior. This does not add PostgreSQL JSONB operators to direct SQLite SQL.
 
 ### Full-Text Search
 
@@ -904,6 +900,8 @@ See [UPGRADE.md](https://github.com/supabase/lite/blob/HEAD/UPGRADE.md) for the 
 ---
 
 ## Testing
+
+These test counts and `app/` / `packages/` commands are preserved upstream 0.11.0 results, not fresh results for this branch. See the [repository README](../../README.md) for this checkout's checks.
 
 | Test Suite | Passing           | Skipped     | Failed          | Assertions        | Files          |
 |------------|-------------------|-------------|-----------------|-------------------|----------------|
