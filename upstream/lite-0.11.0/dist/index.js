@@ -1,3 +1,4 @@
+import { isAuthUidDefault, applyAuthUidDefaults, authUidImplicitColumns } from "./auth-uid-defaults.js";
 import * as _t from "jsonv-ts";
 import { s } from "jsonv-ts";
 import { Deparser, QuoteUtils } from "pgsql-deparser";
@@ -3896,7 +3897,7 @@ function Fa(t, e, n) {
             column: p,
             pgTypeName: m,
             nullable: !v && !E,
-            defaultValue: null,
+            defaultValue: isAuthUidDefault(x?.Constraint?.raw_expr) ? "auth.uid()" : null,
             defaultFn: null,
             isPrimaryKey: E,
             isUnique: !!P,
@@ -4075,6 +4076,10 @@ function Fa(t, e, n) {
                 },
                 p.factoryExtra,
               );
+            continue;
+          }
+          if (d.subtype === "AT_ColumnDefault" && d.name) {
+            u(d.name, { defaultValue: isAuthUidDefault(d.def) ? "auth.uid()" : null });
             continue;
           }
           if (d.subtype === "AT_SetNotNull" && d.name) {
@@ -5050,6 +5055,7 @@ var iA,
         if (r === "CONSTR_NULL") return "NULL";
         if (r === "CONSTR_NOTNULL") return "NOT NULL";
         if (r === "CONSTR_DEFAULT" && e.raw_expr) {
+          if (isAuthUidDefault(e.raw_expr)) return "DEFAULT NULL";
           let s = this.unwrapConstCast(e.raw_expr),
             i = this.visit(s, n);
           return i.includes("(") && !i.startsWith("(")
@@ -5988,6 +5994,7 @@ var iA,
       }
       extractDefaultValue(e) {
         if (!e.def) return null;
+        if (isAuthUidDefault(e.def)) return "NULL";
         let n = this.unwrapConstCast(e.def);
         if ("A_Const" in n) {
           let r = n.A_Const;
@@ -13680,7 +13687,9 @@ function nE(t, e, n) {
           : a.columns(t.onConflict);
       if (t.ignoreDuplicates) return l.doNothing();
       let c = Array.isArray(s) ? s[0] : s,
-        u = Object.keys(c).filter((f) => !t.onConflict.includes(f));
+        u = Object.keys(c).filter((f) =>
+          !t.onConflict.includes(f) && !t[authUidImplicitColumns]?.includes(f),
+        );
       return u.length === 0
         ? l.doUpdateSet({
             [t.onConflict[0]]: sql.ref(`excluded.${t.onConflict[0]}`),
@@ -27013,6 +27022,7 @@ var bi = class t extends Ps {
           throw new At(s, i);
         e.schema = void 0;
       }
+      e = applyAuthUidDefaults(e, n, this.config.translation?.deparse?.schema);
       return await this.applyRls(e, n);
     }
     rlsEnabledFromHistory() {

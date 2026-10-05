@@ -80,7 +80,7 @@ This walks through the minimal path: install, scaffold, write a schema, run a se
    create policy "delete own todos" on todos for delete to authenticated using (auth.uid() = user_id);
    ```
 
-   Currently, default values using functions support is limited, therefore `DEFAULT auth.uid()` is not supported on the SQLite path. You must supply `user_id` by the client on insert; the `WITH CHECK` policy enforces ownership server-side. The `PATTERNS.md` file shipped in the package has more recipes.
+   The schema above supplies `user_id` from the client. You can add `DEFAULT auth.uid()` and omit it from Data API inserts; SQLite resolves this exact default before `WITH CHECK`. Direct SQL and trigger/view-mediated writes still require explicit owners. See [Row Level Security](/database/rls) for the boundary and bulk missing-value options.
 
 1. **Pick how you run it**
 

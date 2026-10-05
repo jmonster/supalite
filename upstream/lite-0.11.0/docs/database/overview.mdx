@@ -32,7 +32,7 @@ SQLite has no arrays, ranges, regex engine, or stored-procedure model, so a hand
 Schema authoring, migrations, and RLS enforcement also have SQLite-specific mechanics worth knowing before you hit them in production:
 
 - [Postgres → SQLite translation](/database/postgres-sqlite-translation): how DDL gets rewritten, which column defaults are honored, and the exact error you'll see for unsupported `CHECK`/`DEFAULT` functions.
-- [Row Level Security](/database/rls): works on every backend, but SQLite enforces it at the application layer with specific gaps (`WITH CHECK` subqueries, `DEFAULT auth.uid()`).
+- [Row Level Security](/database/rls): works on every backend, but SQLite enforces it at the application layer with specific gaps (`WITH CHECK` subqueries and request-only `DEFAULT auth.uid()` resolution).
 - [Declarative schemas](/database/schemas) and [migrations](/database/migrations): the same `supabase/schemas/*.sql` and `supabase/migrations/*.sql` workflow as Supabase, with SQLite's single-namespace constraint.
 - [Functions & triggers](/database/functions-triggers): a supported subset of PL/pgSQL trigger bodies on SQLite; full PL/pgSQL on Postgres backends.
 

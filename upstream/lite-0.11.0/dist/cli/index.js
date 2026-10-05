@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { isAuthUidDefault } from "../auth-uid-defaults.js";
 import as, { statSync, readFileSync } from "node:fs";
 import * as Fe from "node:path";
 import Fe__default, { join } from "node:path";
@@ -10456,7 +10457,7 @@ function Ir(e, t, n) {
             column: h,
             pgTypeName: d,
             nullable: !L && !v,
-            defaultValue: null,
+            defaultValue: isAuthUidDefault(A?.Constraint?.raw_expr) ? "auth.uid()" : null,
             defaultFn: null,
             isPrimaryKey: v,
             isUnique: !!E,
@@ -10635,6 +10636,10 @@ function Ir(e, t, n) {
                 },
                 h.factoryExtra,
               );
+            continue;
+          }
+          if (f.subtype === "AT_ColumnDefault" && f.name) {
+            p(f.name, { defaultValue: isAuthUidDefault(f.def) ? "auth.uid()" : null });
             continue;
           }
           if (f.subtype === "AT_SetNotNull" && f.name) {
@@ -15583,6 +15588,7 @@ var Vx,
         if (r === "CONSTR_NULL") return "NULL";
         if (r === "CONSTR_NOTNULL") return "NOT NULL";
         if (r === "CONSTR_DEFAULT" && t.raw_expr) {
+          if (isAuthUidDefault(t.raw_expr)) return "DEFAULT NULL";
           let s = this.unwrapConstCast(t.raw_expr),
             i = this.visit(s, n);
           return i.includes("(") && !i.startsWith("(")
@@ -16521,6 +16527,7 @@ var Vx,
       }
       extractDefaultValue(t) {
         if (!t.def) return null;
+        if (isAuthUidDefault(t.def)) return "NULL";
         let n = this.unwrapConstCast(t.def);
         if ("A_Const" in n) {
           let r = n.A_Const;

@@ -7,7 +7,7 @@ Anchors below point to the corresponding STATUS.md section. If a limitation here
 ## SQL / DDL (SQLite path)
 
 - Extension declarations are no-ops only for `plpgsql`, `pgcrypto`, and `uuid-ossp`; schema moves and drops for those names are ignored for declarative convergence, while unsupported names and other mutations fail. Only the documented PL/pgSQL trigger subset and UUID v4 defaults are emulated. See [Extension Statements](https://github.com/supabase/lite/blob/HEAD/STATUS.md#extension-statements).
-- `DEFAULT auth.uid()` (and `auth.role()`, `auth.email()`, `auth.jwt()`) on columns → not supported. Drop the default, pass `user_id` from the client, rely on RLS `WITH CHECK`. See [Column Defaults](https://github.com/supabase/lite/blob/HEAD/STATUS.md#column-defaults).
+- `DEFAULT auth.uid()` is resolved only for Data API inserts/upserts with translation metadata. Direct SQL, triggers, and view writes use the physical `NULL` default; PUT/PATCH default expansion and composed auth expressions are not emulated. `auth.role()`, `auth.email()`, and `auth.jwt()` defaults remain unsupported. See [Column Defaults](STATUS.md#column-defaults).
 - Subquery `WITH CHECK` on `INSERT` (`user_id IN (SELECT …)`, `EXISTS (…)`) → throws. Denormalise the owning column. See [RLS known limitations](https://github.com/supabase/lite/blob/HEAD/STATUS.md#row-level-security-rls).
 - Dynamic Storage path concatenation such as `name LIKE workspace_id || '/%'` → not supported in translated RLS. Compare `storage.foldername()`, `storage.filename()`, or `storage.extension()` with a column inside `EXISTS`, or use `IN (SELECT …)`. See [Storage API](https://github.com/supabase/lite/blob/HEAD/STATUS.md#storage-api).
 - Scalar functions outside the allow-list in `DEFAULT` or `CHECK` (`char_length`, `trim`/`btrim`, `regexp_replace`, custom functions) → `Function call "<name>" not supported`, and the whole `CREATE TABLE` fails. `length`, `lower`, `upper`, `ltrim`, `rtrim` work. See [Column Defaults](https://github.com/supabase/lite/blob/HEAD/STATUS.md#column-defaults) and [CHECK constraint functions](https://github.com/supabase/lite/blob/HEAD/STATUS.md#check-constraint-functions).
@@ -71,7 +71,7 @@ Most SQLite-only limitations above do not apply. `rpc()`, ranges, regex, quantif
 
 Common ways code goes wrong against supalite. The fix for each is the corresponding bullet above.
 
-- Don't put `DEFAULT auth.uid()` on a column. Drop the default; pass `user_id` from the client; let RLS `WITH CHECK` enforce ownership.
+- Do not treat `DEFAULT auth.uid()` as an ownership policy or database-wide SQLite function. Keep RLS `WITH CHECK`; supply owner values explicitly for direct SQL and trigger/view-mediated writes.
 - Don't call `rpc()` on the SQLite path. Run a regular HTTP endpoint, or switch the driver to `pglite` / `postgres` in `config.toml`.
 - Don't run more than one of `lite dev`, `lite start`, or the Vite plugin for a project — they race one SQLite database even when ports differ.
 - Don't `lite db reset` then `lite start` on a declarative project and expect your schema to be there. Reset is destructive and replays migrations only, adopting that state (RLS included) as the authoritative one — run `lite db diff -f <name>` first so the declarative schema exists as a migration.

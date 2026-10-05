@@ -63,26 +63,13 @@ Prefer explicit schema names in cross-schema policies. Normal PostgreSQL table p
 These four apply to the SQLite path only. None of them apply on PGlite/Postgres: RLS there is native Postgres RLS with no emulation gaps.
 </Aside>
 
-### No `DEFAULT auth.uid()` on columns
+### Request-specific `DEFAULT auth.uid()`
 
-SQLite can't evaluate `auth.uid()` as a column default (it's a JWT-bound function, not a SQLite builtin). Drop the default, pass `user_id` from the client on insert, and let `WITH CHECK` enforce ownership server-side:
+SQLite Data API inserts/upserts support the exact `DEFAULT auth.uid()` column expression through translation metadata. The default uses the verified request UID before `WITH CHECK` runs. Explicit values, including `null`, remain subject to that policy. Logged-out requests default to `null`; anonymous signed-in JWT subjects retain their UID.
 
-```sql
--- Instead of:
-user_id uuid not null default auth.uid() references auth.users (id),
+For mixed bulk rows, use `defaultToNull: false` / `Prefer: missing=default` when an owner column is listed in the request but absent from a row. An owner column omitted from the entire INSERT uses its default automatically. Ordinary updates do not reset ownership.
 
--- Use:
-user_id uuid not null references auth.users (id),
--- and rely on a WITH CHECK policy to bind the row to the caller.
-```
-
-```ts
-const { data: { session } } = await supabase.auth.getSession();
-await supabase.from("<thing>").insert({
-  user_id: session.user.id,
-  // ...
-});
-```
+This is not database-wide SQLite default support. Physical SQLite DDL uses `DEFAULT NULL`; direct SQL, triggers, and view-mediated writes do not receive JWT identity. PUT/PATCH missing-default expansion is not emulated. Use explicit owners for those paths, and keep translation metadata when embedding. PGlite/Postgres use native defaults.
 
 ### Subquery `WITH CHECK` on `INSERT` throws
 
@@ -159,7 +146,7 @@ create policy "update own" on <thing> for update to authenticated using (auth.ui
 create policy "delete own" on <thing> for delete to authenticated using (auth.uid() = user_id);
 ```
 
-The client supplies `user_id` on insert since SQLite has no `DEFAULT auth.uid()`:
+With the schema above, the client supplies `user_id` on insert. Adding `DEFAULT auth.uid()` allows Data API inserts to omit it, as described above:
 
 ```ts
 const { data: { session } } = await supabase.auth.getSession();
