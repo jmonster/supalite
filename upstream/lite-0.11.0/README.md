@@ -53,12 +53,14 @@ For a per-capability parity view with effort estimates and feasibility notes for
 | [Auth API (GoTrue)](https://github.com/supabase/lite/blob/HEAD/STATUS.md#auth-api-gotrue-compatible)       | ✅     | 23/63 supabase-js methods (13 backend + 10 client-side helpers): `signUp`, `signInWithPassword`, `signInWithOtp`, `verifyOtp`, `refreshSession`, `signOut`, `getUser`, `updateUser`, `resetPasswordForEmail`, `resend`, `reauthenticate`, `signInWithOAuth`, `exchangeCodeForSession`. OAuth covers `github`/`google` only (PKCE + implicit, automatic account linking); other providers (incl. Apple), anonymous sign-in, manual identity linking, admin API, and MFA planned. |
 | [Storage API](https://github.com/supabase/lite/blob/HEAD/STATUS.md#storage-api-compatible)             | 🧪     | 20/20 supabase-js methods: `upload`, `download`, `list`, `remove`, `move`, `copy`, `info`, `exists`, `update`, `getPublicUrl`, `createSignedUrl`, `createSignedUrls`, `createSignedUploadUrl`, `uploadToSignedUrl`, `listBuckets`, `getBucket`, `createBucket`, `updateBucket`, `deleteBucket`, `emptyBucket`. Role-based access + RLS pending. <br />⚠️ Gated behind `EXPERIMENTAL_STORAGE`. |
 | Realtime                | 🔄     | Coming soon                                                        |
-| Edge Functions          | 🔄     | Coming soon                                                        |
+| [Edge Functions](docs/other/edge-functions.mdx) | ⚠️ | Bun-hosted `dev` / `start` runs conventional default-export `{ fetch }` TypeScript functions in native workers in the same process. Ordinary installed packages, SDK invocation, environment, and credential verification. Requires Bun 1.4.2+; no Deno API emulation or full platform parity. |
 | Cloud Hosting           | 🔄     | Coming soon |
 | [CLI](https://github.com/supabase/lite/blob/HEAD/STATUS.md#cli)                                 | ✅     | Upstream `supabase` CLI parity for: `init`, `start`, `db diff`, `db query`. Aligned to v2.98.2 command shape. |
 | [Upgrade to Supabase](https://github.com/supabase/lite/blob/HEAD/UPGRADE.md)                    | 🧪    | `lite upgrade` migrates a project to hosted or local Supabase: schema + user-table data + auth sessions (signing-key import). Storage/realtime migration pending. SQLite shim health audit via `--dry-run`. |
 
 ---
+
+Portable Edge Functions can keep their default-export `{ fetch }` source unchanged when moving from Lite to Supabase. Run the CLI under Bun 1.4.2+ for `dev` / `start`, install normal package dependencies with Bun, and map the same versions in Supabase dependency configuration. The app still calls `supabase.functions.invoke()`. Native Bun workers share the Lite process; no separate Functions service or custom compiler is required. See [setup, runnable SDK example, and limits](docs/other/edge-functions.mdx).
 
 ## Install
 

@@ -1,0 +1,4 @@
+project_id = "functions-portability-fixture"
+
+[functions.tasks]
+verify_jwt = false

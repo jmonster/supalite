@@ -48,5 +48,5 @@ Files are MDX source (Astro Starlight). Site path -> file: `/` -> `index.mdx`, `
 
 ## Other
 
-- [Edge Functions](other/edge-functions.mdx): Supabase Edge Functions (Deno runtime) are not supported in @supabase/lite. Run a regular server endpoint instead.
+- [Edge Functions](other/edge-functions.mdx): Run portable default-export fetch TypeScript functions and unchanged SDK calls through Bun-hosted dev/start. Native workers share the Lite process. Bun 1.4.2+ setup, ordinary installed packages and matching Supabase deno.json mappings, SQLite CRUD example, discovery, environment, worker policies/deadlines/termination, dev refresh, and advanced injected executor. No Deno API emulation, import-map resolver, custom compiler, Functions service, permission sandbox, hosted deployment, or full platform parity.
 - [Realtime](other/realtime.mdx): Supabase Realtime (channels, presence, broadcast, Postgres Changes) is not implemented in @supabase/lite yet.

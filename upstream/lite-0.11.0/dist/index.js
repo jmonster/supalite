@@ -20256,6 +20256,7 @@ function $g(t = {}, e) {
     email: t.email ?? gR(e) ?? new ur(),
     sms: t.sms ?? new Hs(),
     cache: t.cache ?? new lr(),
+    functions: t.functions,
   };
 }
 var yR = "/auth/v1/verify";
@@ -24907,6 +24908,62 @@ function sb(t) {
             ? { type: "secret", claims: { role: "service_role" } }
             : null;
 }
+// Trusted host-supplied execution only: no file loading or runtime isolation.
+function createFunctionsRoutes(app, resolveKey) {
+  const invoke = async (context) => {
+    const name = context.req.param("name");
+    const functions = app.config.functions;
+    const config = functions && Object.hasOwn(functions, name)
+      ? functions[name]
+      : undefined;
+    const executor = app.drivers.functions;
+    if (!config || config.enabled === false || !executor)
+      return context.json({ code: "NOT_FOUND", message: "Function not found" }, 404);
+
+    let jwt = null;
+    let apiKeyType = null;
+    // Supabase dispatches OPTIONS to the function without gateway verification.
+    if (config.verify_jwt !== false && context.req.method !== "OPTIONS") {
+      const authorization = context.req.header("Authorization");
+      const token = authorization?.match(/^Bearer\s+(\S+)$/i)?.[1];
+      const credential = authorization !== undefined ? token : context.req.header("apikey");
+      if (!credential)
+        return context.json({ code: 401, message: "Missing authorization header" }, 401);
+      const key = resolveKey ? await resolveKey(credential, context) : null;
+      if (key) {
+        const agent = context.req.header("User-Agent");
+        if (key.type === "secret" && agent && tk.test(agent))
+          return context.json({ code: 401, message: "Forbidden use of secret API key in browser" }, 401);
+        apiKeyType = key.type;
+      } else if (token) {
+        const secret = app.config.auth?.jwt_secret;
+        if (!secret)
+          return context.json({ code: 401, message: "Invalid JWT" }, 401);
+        try {
+          // Gateway validity, not user/session lookup: legacy anon and service JWTs
+          // need not have a sub claim. Handlers remain responsible for authorization.
+          jwt = await Zh(token, secret);
+        } catch {
+          return context.json({ code: 401, message: "Invalid JWT" }, 401);
+        }
+      } else {
+        return context.json({ code: 401, message: "Invalid JWT" }, 401);
+      }
+    }
+    const response = await executor.fetch(context.req.raw, { name, jwt, apiKeyType });
+    // Node adapters can replace global Response while fetch()/Response.json()
+    // still return native instances. Accept both without reading their bodies.
+    if (Object.prototype.toString.call(response) !== "[object Response]")
+      throw new TypeError("Functions executor must return a Response");
+    if (context.req.method === "HEAD" && response.body) {
+      // Hono suppresses HEAD bodies; cancel first so the producer can release resources.
+      await response.body.cancel();
+      return new Response(null, response);
+    }
+    return response;
+  };
+  return new Re().all("/:name", invoke).all("/:name/*", invoke);
+}
 function ib(t, e = {}) {
   let n = e.middlewares ?? [
       async (f, d) => {
@@ -24974,6 +25031,9 @@ function ib(t, e = {}) {
     })
     .use(...n)
     .use(l)
+    // Functions owns JWT verification, including explicitly keyless webhooks.
+    // Do not run generic user/session auth on this route.
+    .route("/functions/v1", createFunctionsRoutes(t, o))
     .use(_u())
     .route("/auth/v1", Tu)
     .route("/rest/v1", Ah({ forceRollback: e.forceRollback }))

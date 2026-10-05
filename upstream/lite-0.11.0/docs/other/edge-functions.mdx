@@ -1,34 +1,129 @@
 ---
 title: "Edge Functions"
-description: "Supabase Edge Functions (Deno runtime) are not supported in @supabase/lite. Run a regular server endpoint instead."
+description: "Run portable default-fetch functions with the Lite CLI and native Bun workers."
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
+Bun-hosted `dev` and `start` serve `supabase/functions/<name>/index.ts` through the Supabase SDK. Functions use a default `{ fetch(request) }` export, Web APIs and installed packages.
+
 <Aside type="caution">
-Edge Functions are not supported. Supabase Lite does not bundle a Deno or edge runtime, and there is no `/functions/v1/*` route.
+Functions have the host's permissions; workers are not a security sandbox. Do not use them as a multi-tenant isolation boundary. Bun's [Worker API is experimental](https://bun.com/docs/runtime/workers).
 </Aside>
 
-A config schema for functions exists in `app/src/config/functions.ts` (per-function JWT verification, entrypoints), but nothing executes against it: `supabase/functions/*` in your project is not picked up or served by Supabase Lite.
+## Run the CLI with Bun
 
-## Workaround
+Requires **Bun 1.4.2 or later**; Bun 1.4.2 is qualified. [Install Bun](https://bun.com/docs/installation) and check `bun --version`. Invoke the CLI explicitly with `bun` to avoid its Node shebang. Lite, SQLite and workers share one process; a Node executable, Deno, Docker and separate Functions services are unnecessary.
 
-Supabase Lite is a plain HTTP server (`app.fetch`), so anything you'd put in an Edge Function can live in a normal server endpoint instead, called directly from your client:
+Bun loads TypeScript directly. Install project dependencies before starting Lite.
 
-- A [Hono](https://hono.dev/) or Express route mounted alongside your app
-- A Next.js App Router route handler
-- Vite middleware, in the same process as the [Vite plugin](/integrations/vite)
+## Run the portable SQLite example
 
-```ts
-// Instead of supabase.functions.invoke("my-function", { body }):
-const res = await fetch("/api/my-function", {
-  method: "POST",
-  body: JSON.stringify(body),
-});
+`examples/functions-portable` includes a `tasks` function, SDK client, PostgreSQL migration and separate Lite/Supabase configs. From the repository root:
+
+```sh
+bun install
+cd examples/functions-portable
+bun install
+bun ../../upstream/lite-0.11.0/dist/cli/index.js dev \
+  --config supabase/config.lite.toml --no-admin
 ```
 
-Since Supabase Lite already runs your Data API and Auth in-process (`app.fetch`), a hand-rolled endpoint has direct access to `app.getClient()` for database/auth calls without an extra network hop. See [Embedded / programmatic usage](/integrations/embedded) for wiring that up.
+`lite dev` applies migrations automatically. The example uses PostgreSQL-to-SQLite translation (`db.driver = "sqlite-postgres"`) and Bun's SQLite adapter; data persists in `.lite/tasks.sqlite`.
 
-If you specifically need Deno-compatible Edge Functions (for parity with a production Supabase project, or because you rely on Deno-only APIs), run those against hosted Supabase and keep the rest of your app on Supabase Lite.
+In another terminal, from `examples/functions-portable`:
 
-For the Edge Functions model this replaces, see the [Supabase Edge Functions docs](https://supabase.com/docs/guides/functions). See [Compatibility](/compatibility) for how this tracks against other services.
+```sh
+SUPABASE_URL=http://127.0.0.1:54321 \
+SUPABASE_PUBLISHABLE_KEY=sb_publishable_portability_demo \
+bun app/acceptance.mjs
+```
+
+The eight checks cover create/read/update, read-after-update, independent Data API reads, validation errors, function-owned `OPTIONS` and path/query routing. This example uses placeholder keys and disables gateway JWT verification and sign-in; add authorization before exposing it.
+
+## Source and dependency portability
+
+Portable handler and SDK invocation source can stay unchanged; dependency mappings, deployment, URLs and keys remain destination-specific. Use a default Fetch handler:
+
+```ts
+export default {
+  async fetch(request: Request): Promise<Response> {
+    return Response.json({ method: request.method });
+  },
+};
+```
+
+Use bare package and relative shared-module imports. Pin dependencies in `package.json` and run `bun install`. The example imports `@supabase/supabase-js`, `@supabase/supabase-js/cors`, and `node:process`:
+
+```json
+{
+  "dependencies": {
+    "@supabase/supabase-js": "2.117.2"
+  }
+}
+```
+
+For Supabase, map the same versions in `supabase/functions/tasks/deno.json`:
+
+```json
+{
+  "imports": {
+    "@supabase/supabase-js": "npm:@supabase/supabase-js@2.117.2",
+    "@supabase/supabase-js/cors": "npm:@supabase/supabase-js@2.117.2/cors"
+  }
+}
+```
+
+Bun ignores `deno.json`, `deno.jsonc` and Deno import maps. Lite rejects a configured `functions.<name>.import_map` locally. Keep Bun-only APIs out of portable source and verify dependencies on both runtimes.
+
+The identical function and eight-check SDK client passed on Bun 1.4.2 and official local Supabase Edge Runtime 1.77.1, with different dependency configuration. This does not qualify arbitrary functions, performance or hosted deployment. Deploy with Supabase tooling using `supabase/config.toml`, migration, function and app files, and the target URL/keys. SQLite SQL/API limits still apply.
+
+## Discovery, environment, and refresh
+
+- `dev` / `start` discovers `supabase/functions/<name>/index.ts`. `_shared` is importable but not an endpoint; `enabled = false` excludes a function.
+- `[functions.<name>]` supports `entrypoint` and `verify_jwt`. Entrypoints resolve relative to the selected config file; explicitly configured missing files fail.
+- `[edge_runtime] enabled = false` disables automatic execution. `policy = "oneshot"` is the default; `"per_worker"` reuses workers.
+- `supabase/functions/.env` populates `process.env` / `Bun.env`. Lite supplies `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_PUBLISHABLE_KEYS`, `SUPABASE_SECRET_KEYS`, and `SUPABASE_FUNCTION_SLUG`. Reserved `SUPABASE_` env-file entries are ignored. Key maps include `default` when configured.
+- Configured credentials take precedence. `auth.jwt_secret` supplies fallback `anon` / `service_role` JWTs, not user identities. Keep secret/service-role keys server-side.
+- `dev` watches Functions/shared files, `.env`, configured entrypoints, `package.json` / `bun.lock`, and TOML/JSON `functions` / `edge_runtime` settings. Install changed dependencies. Restart for executable configs, other server settings, outside imports or `node_modules` changes. `start` does not watch.
+
+Workers receive the supplied function environment, not the host environment. This limits accidental `process.env` leakage, but does not restrict filesystem, network or subprocess access.
+
+## Worker lifetime
+
+Capacity is four workers, with eight active requests per `per_worker` worker. Excess requests receive `503 BUSY` without an unbounded queue. Startup has a 60-second deadline; each invocation has 150 seconds for startup, execution and response-body consumption. Timeout returns `504` before headers or fails the stream afterward. Timed-out workers retire; after a two-second grace period, native termination stops remaining code, including non-yielding synchronous JavaScript.
+
+`oneshot` retires after its response body completes or is cancelled. `per_worker` retains globals until 60 seconds of inactivity, reload, failure or shutdown. Client cancellation drains active requests before retiring that worker; timeout termination can interrupt its other active requests. Background work has no completion guarantee after the request ends.
+
+## Requests, CORS, and verification
+
+Apps call `/functions/v1/{name}`. The built-in bridge strips `/functions/v1`: `tasks/123?view=full` reaches the handler as `/tasks/123?view=full`, matching [Supabase routing](https://supabase.com/docs/guides/functions/routing). Methods, queries, end-to-end headers, bodies and response streams pass through; hop-by-hop headers and decompression metadata are normalized. `HEAD` suppresses the response body. Abort and stream cancellation are forwarded over local HTTP, but Bun may not invoke handler abort/cancel callbacks; cleanup must be cooperative. Region hints do not select a region.
+
+All `OPTIONS` bypass gateway credential verification. The handler owns preflight responses and CORS headers, as in [Supabase's CORS guide](https://supabase.com/docs/guides/functions/cors); Lite does not overwrite them.
+
+`verify_jwt` defaults to `true`. Non-`OPTIONS` requests need a valid gateway credential:
+
+- `Authorization: Bearer ...` is authoritative. Lite recognizes configured/resolver API keys or verifies HS256 JWTs with `auth.jwt_secret`. Invalid authorization never falls back to `apikey`.
+- Without `Authorization`, `apikey` can identify configured `auth.publishable_key` / `auth.secret_key` or keys recognized by `options.server.apiKeys.resolver`. Prefix alone grants no access.
+- API keys fabricate neither claims nor user identity. Browser-like user agents cannot use secret keys. `options.server.apiKeys: false` disables key recognition, not `verify_jwt`.
+- Valid legacy anon/service-role and user JWTs need no database user/session lookup. Asymmetric signing keys and JWKS verification are unsupported.
+
+Gateway verification is not application authorization; publishable keys are public. Authorize callers inside functions and forward their Authorization header for caller-scoped RLS. `verify_jwt: false` allows keyless requests; validate webhook signatures or other credentials before sensitive operations.
+
+## Advanced: injected executors
+
+Embedded/custom runtimes can provide a trusted `options.drivers.functions.fetch(request, context)` executor, which takes precedence over automatic CLI setup.
+
+Configure allowed names in `functions`; disabled/unconfigured functions or missing executors return 404. Injected executors receive the original unread `Request`, including its full gateway URL, headers and abort signal. `context.jwt` holds verified claims or `null`; `apiKeyType` is `"publishable"`, `"secret"` or `null`. Both are `null` for `OPTIONS` or `verify_jwt: false`. Return a Web `Response`; SDK decoding/errors and streaming work normally. Handle CORS for cross-origin browsers.
+
+Executors share host permissions; direct database access can bypass Data API RLS.
+
+## Limits and graduation
+
+- Automatic workers require Bun-hosted `dev` / `start`. The core supports other hosts; embedded `App` and Vite integrations must inject an executor to run Functions.
+- No separate `functions serve`, hosted deployment/management API or regional routing. Deploy with Supabase tooling.
+- No Deno APIs (`Deno.serve` included), local Deno import-map resolution, direct `npm:` / `jsr:` specifiers, `EdgeRuntime.waitUntil` or gateway WebSocket upgrades.
+- SQLite has no PostgreSQL wire protocol. Direct PostgreSQL sockets and `SUPABASE_DB_URL` require a compatible PostgreSQL backend; Lite does not synthesize that variable for SQLite.
+- Runtime APIs, package compatibility, SQL `rpc()`, and database webhooks retain their own limitations.
+
+See [Compatibility](/compatibility), [Embedded usage](/integrations/embedded), and [Supabase Edge Functions](https://supabase.com/docs/guides/functions).
