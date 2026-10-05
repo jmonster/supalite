@@ -1,4 +1,10 @@
 #!/usr/bin/env node
+import {
+  identityDefinition,
+  preserveUpgradeIdentities,
+  identityOverride,
+  upgradeSequenceReset,
+} from "./upgrade-identity.js";
 import as, { statSync, readFileSync } from "node:fs";
 import * as Fe from "node:path";
 import Fe__default, { join } from "node:path";
@@ -18230,7 +18236,7 @@ async function CT(e) {
       SELECT table_schema, table_name, column_name, is_nullable, data_type,
              udt_name, udt_schema, character_maximum_length,
              numeric_precision, numeric_scale, column_default,
-             is_generated, generation_expression, ordinal_position
+             is_generated, generation_expression, ordinal_position, is_identity, identity_generation, identity_start, identity_increment, identity_minimum, identity_maximum, identity_cycle
       FROM information_schema.columns
       WHERE table_schema NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
       ORDER BY table_schema, table_name, ordinal_position
@@ -18294,9 +18300,11 @@ function $T(e, t) {
   return (
     n.push(RT(e)),
     e.is_nullable === "NO" && !t.includes(e.column_name) && n.push("NOT NULL"),
-    e.is_generated === "ALWAYS" && e.generation_expression
-      ? n.push(`GENERATED ALWAYS AS (${e.generation_expression}) STORED`)
-      : e.column_default !== null && n.push(`DEFAULT ${e.column_default}`),
+    e.is_identity === "YES"
+      ? n.push(identityDefinition(e))
+      : e.is_generated === "ALWAYS" && e.generation_expression
+        ? n.push(`GENERATED ALWAYS AS (${e.generation_expression}) STORED`)
+        : e.column_default !== null && n.push(`DEFAULT ${e.column_default}`),
     t.length === 1 && t[0] === e.column_name && n.push("PRIMARY KEY"),
     n.join(" ")
   );
@@ -18323,7 +18331,9 @@ var kh = b(() => {
 function io(e) {
   let t = so.get(e);
   if (t) return t;
-  let n = vh(e.sql, no()).then(async (r) => (await ah(r)).schema);
+  let n = vh(e.sql, no()).then(async (r) =>
+    preserveUpgradeIdentities(await ah(r)),
+  );
   return (
     so.set(e, n),
     n.catch(() => {
@@ -18534,7 +18544,7 @@ async function co(e, t) {
     for (let x of h) {
       let $ = d.map((C) => Oh(x[C], g.get(C)));
       y.push(
-        `INSERT INTO "${l}"."${a.name}" (${d.map((C) => `"${C}"`).join(", ")}) VALUES (${$.join(", ")}) ON CONFLICT DO NOTHING`,
+        `INSERT INTO "${l}"."${a.name}" (${d.map((C) => `"${C}"`).join(", ")})${identityOverride(f, u)} VALUES (${$.join(", ")}) ON CONFLICT DO NOTHING`,
       );
     }
     let _ = f
@@ -18542,7 +18552,7 @@ async function co(e, t) {
         let $ = u?.get(x.name);
         return $ ? $.context.isSerial : OT(x);
       })
-      .map((x) => LT(l, a.name, x.name));
+      .map((x) => upgradeSequenceReset(l, a.name, x.name, u?.get(x.name), LT));
     o.push({ schema: l, table: a.name, inserts: y, sequenceResets: _ });
   }
   return o;
