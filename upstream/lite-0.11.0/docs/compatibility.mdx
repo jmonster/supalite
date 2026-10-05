@@ -51,7 +51,7 @@ Email/password, OTP, sessions, RLS auth context, and OAuth sign-in with `github`
 | RLS auth context (`auth.uid()`, `auth.role()`, `auth.jwt()`) | ✅ | ✅ | ✅ | Shared with the Data API |
 | API keys (`sb_publishable_*`/`sb_secret_*`) | ✅ | ✅ | ✅ | Enforced on `/rest/v1`/`/auth/v1` when configured; legacy JWT-as-apikey not supported |
 | OAuth / social sign-in | ⚠️ | ⚠️ | ⚠️ | `github`/`google` only; PKCE + implicit flows, automatic account linking. Other providers (incl. Apple) planned |
-| Anonymous sign-in | 🔄 | 🔄 | 🔄 | Planned |
+| Anonymous sign-in | ⚠️ | ⚠️ | ⚠️ | Opt-in guest/email conversion; controlled deployments, no built-in CAPTCHA/rate limiting; [qualification limits](../../../docs/anonymous-onboarding.md) |
 | Identity linking | ⚠️ | ⚠️ | ⚠️ | Automatic linking on OAuth sign-in works; manual `linkIdentity`/`unlinkIdentity` planned |
 | Admin user API | 🔄 | 🔄 | 🔄 | Planned |
 | MFA / TOTP / WebAuthn | ⚫ | ⚫ | ⚫ | Not planned |

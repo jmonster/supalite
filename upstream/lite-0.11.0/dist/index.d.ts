@@ -157,6 +157,7 @@ interface AuthConfig {
     password_required_characters?: string[];
     password_requirements?: string;
     enable_signup?: boolean;
+    enable_anonymous_sign_ins?: boolean;
     sessions?: {
         timebox?: string;
         inactivity_timeout?: string;
@@ -594,6 +595,11 @@ declare class AuthService {
      * the full URL (`.`/`/` are separators, so `*` does not cross them, `**` does).
      */
     resolveEmailRedirect(redirectTo?: string | null, refererHeader?: string | null): string;
+    signUpRequest(body: unknown, redirectTo?: string): Promise<{
+        user: UserResponse;
+        session?: SessionResponse;
+    }>;
+    private signInAnonymously;
     signUp(email: string | undefined, password: string | undefined, data?: Record<string, unknown>, redirectTo?: string): Promise<{
         user: UserResponse;
         session?: SessionResponse;
@@ -609,6 +615,7 @@ declare class AuthService {
         password?: string;
         email?: string;
     }, redirectTo?: string): Promise<UserResponse>;
+    private autoConfirmAnonymousEmail;
     signOut(sessionId: string | undefined, scope: string | undefined, userId: string): Promise<void>;
     signInWithOtp(email: string | undefined, options?: {
         shouldCreateUser?: boolean;
