@@ -13,6 +13,7 @@
         "@supabase/lite": "0.11.0",
         "@supabase/supabase-js": "2.117.2",
         "bcryptjs": "3.0.3",
+        "postgres": "3.4.8",
       },
     },
   },
@@ -170,6 +171,8 @@
     "pgsql-deparser": ["pgsql-deparser@17.18.3", "", { "dependencies": { "@pgsql/quotes": "17.1.0", "@pgsql/types": "^17.6.2" } }, "sha512-lD8kPWgw9KAbUbKbQKgzDGzVdtEmp25N+7qZl62I7v8Uu9Wqy7+M0EOeU96++OgPD9S1pyp9MKNGzZzPJF2C4Q=="],
 
     "pgsql-parser": ["pgsql-parser@17.9.15", "", { "dependencies": { "@pgsql/types": "^17.6.2", "libpg-query": "17.7.3", "pgsql-deparser": "17.18.3" } }, "sha512-6+k0EtTn0CEQTR5v2APARu9En4vm46TpmpdMSfKDHkZwWZuEc08B7SeVg32VxNQ2HD5xk+dQ9TD0k9m+S+vFgg=="],
+
+    "postgres": ["postgres@3.4.8", "", {}, "sha512-d+JFcLM17njZaOLkv6SCev7uoLaBtfK86vMUXhW1Z4glPWh4jozno9APvW/XKFJ3CCxVoC7OL38BqRydtu5nGg=="],
 
     "postgres-array": ["postgres-array@2.0.0", "", {}, "sha512-VpZrUqU5A69eQyW2c5CA1jtLecCsN2U/bD6VilrFDWq5+5UIEVO7nazS3TEcHf1zuPYO/sqGvUvW62g86RXZuA=="],
 

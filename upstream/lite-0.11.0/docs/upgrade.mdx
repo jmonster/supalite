@@ -69,6 +69,8 @@ If `--supabase-token` is omitted, `SUPABASE_ACCESS_TOKEN` is used. Missing requi
 For a nonstandard Management API endpoint, set `SUPABASE_MANAGEMENT_API_URL` to its full base URL. This overrides only Management API requests; `SUPABASE_ENDPOINT` still determines the project domain. For example, a local Management API can use `SUPABASE_MANAGEMENT_API_URL=http://127.0.0.1:54321` without turning the address into `api.127.0.0.1`.
 </TabItem>
 <TabItem label="Local">
+The following describes the default legacy runtime. The opt-in [native local route](../../../docs/upgrade-native-local.md) uses Supabase CLI 2.119.0 and a fresh separate target.
+
 `--target local` upgrades into a local [Supabase CLI](https://supabase.com/docs/guides/local-development) workdir. By default that's the current directory, so the command rewrites `./supabase/config.toml` in place, stripping the Supabase Lite-only `[db].driver`/`[db].url` keys and repointing at the Supabase CLI stack. **This breaks the Supabase Lite dev server until the config is restored.**
 
 The original config is backed up first to `./supabase/config.toml.bak`:

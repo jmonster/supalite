@@ -67,6 +67,8 @@ Only `--mode user` is currently supported. `--mode platform` is reserved for fut
 
 ### Local Supabase
 
+This section describes the default legacy local runtime. For the opt-in native runtime with Supabase CLI 2.119.0, see [native setup and limits](../../docs/upgrade-native-local.md).
+
 `--target local` upgrades into a local Supabase CLI workdir. By default, the workdir is the current directory, so the command rewrites `./supabase/config.toml` in place: it strips the Supalite-only `[db].driver`/`[db].url` keys and repoints the file at the Supabase CLI stack. This breaks `bun run dev` (the Supalite Vite plugin) until the config is restored.
 
 To prevent data loss, the original Supalite config is first backed up to `./supabase/config.toml.bak`, and the upgrade report prints how to restore it. Restore supalite dev with:
