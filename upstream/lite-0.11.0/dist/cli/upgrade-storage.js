@@ -820,11 +820,6 @@ export async function transferStorage(app, snapshot, target, signal) {
         contentType.includes("text/html") ? "text/plain" : contentType,
         `${label} downloaded MIME`,
       );
-      equal(
-        download.headers.get("cache-control"),
-        cacheControl,
-        `${label} downloaded cache-control`,
-      );
     } catch (error) {
       signal?.throwIfAborted();
       throw new Error(

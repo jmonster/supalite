@@ -326,8 +326,8 @@ test("preflight preserves empty/custom JSON and rejects unsupported null/path va
   }
 });
 
-for (const [firstName, keepInitialVersion, hosted] of [[files[0].name,false],[files[1].name,false],[files[0].name,true],[files[0].name,false,true]])
-test(hosted ? "hosted transfer preserves object identity, metadata, bytes and application references (mock HTTPS)" : keepInitialVersion ? "upload must replace its temporary version" : `previous-version cleanup preserves ${firstName} and app references (mock HTTP)`, { concurrency: false }, async t => {
+for (const [firstName, keepInitialVersion, hosted, corruptCacheControl] of [[files[0].name,false],[files[1].name,false],[files[0].name,true],[files[0].name,false,true],[files[0].name,false,true,true]])
+test(hosted ? corruptCacheControl ? "hosted transfer rejects changed stored cache-control with intact file bytes" : "hosted transfer preserves object identity, metadata, bytes and application references (mock HTTPS)" : keepInitialVersion ? "upload must replace its temporary version" : `previous-version cleanup preserves ${firstName} and app references (mock HTTP)`, { concurrency: false }, async t => {
   const source = await fixture(t);
   await source.connection.exec('UPDATE "storage.objects" SET version = NULL WHERE name = ?',files[0].name);
   await source.connection.exec('UPDATE "storage.objects" SET version = ? WHERE name = ?',"source-only/arbitrary",files[1].name);
@@ -366,7 +366,7 @@ test(hosted ? "hosted transfer preserves object identity, metadata, bytes and ap
       const bytes = Buffer.from(await new Response(options.body).arrayBuffer());
       await mkdir(directory,{recursive:true});
       await writeFile(join(directory,version),bytes);
-      const metadata = {size:bytes.length,contentLength:bytes.length,mimetype:options.headers["content-type"],cacheControl:options.headers["cache-control"],eTag:hash(bytes),lastModified:new Date().toISOString()};
+      const metadata = {size:bytes.length,contentLength:bytes.length,mimetype:options.headers["content-type"],cacheControl:corruptCacheControl ? "max-age=42" : options.headers["cache-control"],eTag:hash(bytes),lastModified:new Date().toISOString()};
       const userMetadata = JSON.parse(Buffer.from(options.headers["x-metadata"],"base64"));
       uploads.set(`${bucket}/${name}`,{metadata});
       await target.query("UPDATE storage.objects SET metadata=$1::jsonb,user_metadata=$2::jsonb,version=$3 WHERE bucket_id=$4 AND name=$5",[JSON.stringify(metadata),JSON.stringify(userMetadata),keepInitialVersion ? previousVersion : version,bucket,name]);
@@ -380,7 +380,7 @@ test(hosted ? "hosted transfer preserves object identity, metadata, bytes and ap
     const version = (await target.query("SELECT version FROM storage.objects WHERE bucket_id=$1 AND name=$2",[bucket,name])).rows[0].version;
     try {
       const bytes = await readFile(join(directory,version));
-      return new Response(bytes,{headers:{"content-type":object.metadata.mimetype,"cache-control":object.metadata.cacheControl}});
+      return new Response(bytes,{headers:{"content-type":object.metadata.mimetype,"cache-control":hosted ? `public, ${object.metadata.cacheControl}` : object.metadata.cacheControl}});
     } catch (error) {
       if (error.code !== "ENOENT") throw error;
       return new Response("missing versioned file",{status:500});
@@ -391,9 +391,9 @@ test(hosted ? "hosted transfer preserves object identity, metadata, bytes and ap
       ? hostedUpgradeTarget({runSql: async (_ref, sql) => (await query(sql)).rows}, projectRef, origin, key)
       : {status:{apiUrl:origin,serviceRoleKey:key},runSql:query};
     const transfer = storage.transferStorage(source.app,snapshot,destination);
-    if (keepInitialVersion) {
-      await assert.rejects(transfer,/target operational metadata verification failed/);
-      assert.equal(downloads,0,"an unchanged placeholder is rejected before download");
+    if (keepInitialVersion || corruptCacheControl) {
+      await assert.rejects(transfer,corruptCacheControl ? /cache-control verification failed/ : /target operational metadata verification failed/);
+      assert.equal(downloads,0,"invalid stored metadata is rejected before download");
       assert.deepEqual(await sourceState(source),before);
       return;
     }

@@ -2,7 +2,7 @@
 
 The hosted target creates a fresh Supabase project, applies the recorded PostgreSQL migrations, replays Auth identities and password hashes, transfers verified Storage, and imports application rows in foreign-key order. Application provisioning/counter trigger functions are neutralized during replay and restored exactly; constraints and platform triggers remain active. Management API query responses use row arrays, which the hosted adapter supplies to the shared verification pipeline.
 
-Stop source writers and keep them stopped throughout the upgrade. The stock filesystem source requires `EXPERIMENTAL_STORAGE=1` and PostgreSQL migrations on SQLite. Storage preserves bucket/object IDs, owners, creation times, restrictions and logical metadata. It streams file bytes through the target Storage API, verifies downloaded SHA-256 and checks application imports did not alter Storage. Operational file versions and modification/access times may change.
+Stop source writers and keep them stopped throughout the upgrade. The stock filesystem source requires `EXPERIMENTAL_STORAGE=1` and PostgreSQL migrations on SQLite. Storage preserves bucket/object IDs, owners, creation times, restrictions and logical metadata. It streams file bytes through the target Storage API, verifies downloaded SHA-256 and checks application imports did not alter Storage. Operational file versions and modification/access times may change. Stored cache-control is retained and verified; response cache directives follow the target Storage gateway.
 
 ```sh
 EXPERIMENTAL_STORAGE=1 lite upgrade --target hosted --dry-run --json --storage-quiescent
