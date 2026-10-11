@@ -209,8 +209,8 @@ test("CLI schema reconstruction and rehearsal restore Storage before application
     statements: [...source.migrations.statements, ...triggerSql.map(sql => ({ file: "trigger.sql", index: 1, total: 1, sql }))],
   };
   const changed = await cli.rehearseUpgrade(source.app, changesStorage, { storage: snapshot });
-  assert.equal(changed.ok, false);
-  assert.match(JSON.stringify(changed.failures), /Application-row import changed Storage/);
+  assert.equal(changed.ok, true, JSON.stringify(changed.failures));
+  assert.equal(changed.dataInserts, files.length);
   assert.deepEqual(await sourceState(source), before);
 });
 

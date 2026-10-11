@@ -1,3 +1,5 @@
+import { compileSqlFunction, functionKey, applyFunctionGrant, dropSqlFunction, translateFunctionParameter, translateJsonFunction, translateJsonRecordset, executeSqliteRpc } from "./sqlite-functions.js";
+import { parseTriggerFunction, compileSqliteTrigger, buildTriggerBody, translateTriggerExpression, translateTriggerDml } from "./sqlite-triggers.js";
 import { mergeFilter } from "./query/merge-filters.js";
 import {
   markJsonbLiteral,
@@ -1828,11 +1830,11 @@ var Nm,
         gen_random_uuid: { sqlite: () => Nm, js: () => crypto.randomUUID() },
         uuid_generate_v4: { sqlite: () => Nm, js: () => crypto.randomUUID() },
         now: {
-          sqlite: () => "datetime('now')",
+          sqlite: () => "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
           js: () => new Date().toISOString(),
         },
         current_timestamp: {
-          sqlite: () => "datetime('now')",
+          sqlite: () => "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
           js: () => new Date().toISOString(),
         },
         current_date: {
@@ -4593,136 +4595,6 @@ var Ua,
       }
     };
   });
-var Xk,
-  Zk,
-  eA,
-  tA,
-  Nr,
-  Ma,
-  Qb = N(() => {
-    Or();
-    ((Xk = [
-      "DECLARE",
-      "IF",
-      "ELSIF",
-      "ELSE",
-      "LOOP",
-      "WHILE",
-      "FOR",
-      "FOREACH",
-      "EXCEPTION",
-      "RAISE",
-      "PERFORM",
-      "EXECUTE",
-      "SELECT",
-    ]),
-      (Zk = /^NEW\.(\w+)\s*(?::=|=)\s*(.+)$/is),
-      (eA = /^RETURN\s+(NEW|OLD)$/i),
-      (tA = /^(INSERT|UPDATE|DELETE)\b/i),
-      (Nr = class extends Dn {
-        constructor(n, r, s) {
-          super(s ?? `Unsupported PL/pgSQL: ${n}`);
-          this.hint = n;
-          this.body = r;
-        }
-      }),
-      (Ma = class {
-        parse(e) {
-          let n = this.extractBlock(e),
-            r = this.splitStatements(n),
-            s = [],
-            i = null;
-          for (let o of r) {
-            let a = o.trim();
-            if (!a) continue;
-            this.rejectUnsupported(a);
-            let l = a.match(eA);
-            if (l) {
-              ((i = l[1].toUpperCase()), s.push({ type: "return", value: i }));
-              continue;
-            }
-            let c = a.match(Zk);
-            if (c) {
-              s.push({
-                type: "assignment",
-                column: c[1],
-                expression: c[2].trim(),
-              });
-              continue;
-            }
-            if (tA.test(a)) {
-              s.push({ type: "dml", sql: a });
-              continue;
-            }
-            throw new Nr(
-              `"${a.substring(0, 80)}" is not translatable to SQLite`,
-              n,
-            );
-          }
-          if (!i)
-            throw new Dn(
-              "Trigger function body must end with RETURN NEW or RETURN OLD",
-            );
-          return { statements: s, returnValue: i };
-        }
-        extractBlock(e) {
-          let n = e.trim(),
-            r = n.toUpperCase();
-          if (/^\s*DECLARE\b/i.test(n))
-            throw new Nr('"DECLARE" is not translatable to SQLite', e);
-          let s = r.indexOf("BEGIN"),
-            i = r.lastIndexOf("END");
-          if (s === -1 || i === -1 || i <= s)
-            throw new Nr(
-              "Expected BEGIN ... END block in trigger function body",
-              e,
-            );
-          return n.slice(s + 5, i).trim();
-        }
-        splitStatements(e) {
-          let n = [],
-            r = "",
-            s = 0,
-            i = false,
-            o = "";
-          for (let l = 0; l < e.length; l++) {
-            let c = e[l];
-            if (i) {
-              ((r += c),
-                c === o &&
-                  (l + 1 < e.length && e[l + 1] === o
-                    ? (r += e[++l])
-                    : (i = false)));
-              continue;
-            }
-            if (c === "'" || c === '"') {
-              ((i = true), (o = c), (r += c));
-              continue;
-            }
-            if (c === "(") {
-              (s++, (r += c));
-              continue;
-            }
-            if (c === ")") {
-              (s--, (r += c));
-              continue;
-            }
-            if (c === ";" && s === 0) {
-              (n.push(r.trim()), (r = ""));
-              continue;
-            }
-            r += c;
-          }
-          let a = r.trim();
-          return (a && n.push(a), n);
-        }
-        rejectUnsupported(e) {
-          let n = e.match(/^(\w+)/)?.[1]?.toUpperCase();
-          if (n && Xk.includes(n))
-            throw new Nr(`"${n}" is not translatable to SQLite`, e);
-        }
-      }));
-  });
 function oA(t) {
   let e = t?.GrantStmt ?? t;
   return e?.is_grant !== true
@@ -4751,7 +4623,6 @@ var iA,
     In();
     zb();
     Xn();
-    Qb();
     ir();
     gi();
     Sf();
@@ -4772,7 +4643,10 @@ var iA,
       helper;
       config;
       triggerFunctions = new Map();
-      plpgsqlParser = new Ma();
+      sqlFunctions = new Map();
+      sqlFunctionSchemas;
+      sqlFunctionContext;
+      triggerAliases;
       introspection;
       functionResolution;
       serialColumns;
@@ -4797,6 +4671,9 @@ var iA,
           this.relationNames.add(Ot(o.schema, o.name));
       }
       visit(e, n) {
+        const parameter = translateFunctionParameter(e, this);
+        if (parameter !== undefined) return parameter;
+        if (e.GrantStmt?.objtype === "OBJECT_FUNCTION") { applyFunctionGrant(e.GrantStmt, this.sqlFunctions); return ""; }
         let r = vr(e);
         if (r === "GrantStmt" && oA(e)) return "";
         let s = e.AlterObjectSchemaStmt;
@@ -4859,6 +4736,15 @@ var iA,
           s = this.quoteBareIfNeeded(Ot(e.schemaname, r)),
           i = e.alias ? " " + this.Alias(e.alias, n) : "";
         return s + i;
+      }
+      ColumnRef(e, n) {
+        const fields = e.fields ?? [];
+        if (fields.length === 3 && fields[0].String && fields[1].String) {
+          const schema = fields[0].String.sval ?? fields[0].String.str;
+          const table = fields[1].String.sval ?? fields[1].String.str;
+          return `${this.quoteBareIfNeeded(Ot(schema, table))}.${super.ColumnRef({ fields: [fields[2]] }, n)}`;
+        }
+        return super.ColumnRef(e, n);
       }
       getRelationName(e) {
         return Ot(e.schemaname, e.relname);
@@ -5101,7 +4987,17 @@ var iA,
           );
         return "";
       }
+      MinMaxExpr(e, n) {
+        const operation = e.op === "IS_GREATEST" ? "max" : "min";
+        return `(SELECT ${operation}(value) FROM json_each(json_array(${e.args.map(arg => this.deparse(arg, n)).join(", ")})))`;
+      }
+      RangeFunction(e, n) {
+        const recordset = translateJsonRecordset(e, this, n);
+        return recordset !== undefined ? recordset : super.RangeFunction(e, n);
+      }
       FuncCall(e, n) {
+        const json = translateJsonFunction(e, this, n);
+        if (json !== undefined) return json;
         let s = (e.funcname || [])
           .map((c) => c.String?.sval || c.String?.str)
           .filter(Boolean);
@@ -5134,7 +5030,7 @@ var iA,
       SQLValueFunction(e, n) {
         switch (e.op) {
           case "SVFOP_CURRENT_TIMESTAMP":
-            return "datetime('now')";
+            return "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')";
           case "SVFOP_CURRENT_DATE":
             return "date('now')";
           case "SVFOP_CURRENT_TIME":
@@ -5191,12 +5087,13 @@ var iA,
             );
           let r = e.name[0]?.String?.sval || e.name[0]?.String?.str;
           if (r) {
+            if (!e.lexpr && e.rexpr && ["-", "+", "~"].includes(r)) return `${r}(${this.visit(e.rexpr, n)})`;
             if (!e.lexpr || !e.rexpr)
               throw new j(
                 { A_Expr: e },
                 "A_Expr missing left or right expression",
               );
-            if (!Ub.includes(r.toUpperCase()))
+            if (!Ub.includes(r.toUpperCase()) && !["->", "->>"].includes(r))
               throw new j(
                 { A_Expr: e },
                 `Operator "${r}" is not supported in SQLite`,
@@ -5256,7 +5153,9 @@ var iA,
               : this.visit(a, n),
           )
           .filter(Boolean);
-        return (r.push(`(${o.join(", ")})`), r.join(" "));
+        r.push(`(${o.join(", ")})`);
+        if (e.whereClause) r.push(`WHERE ${this.deparse(e.whereClause, n)}`);
+        return r.join(" ");
       }
       IndexElem(e, n) {
         let r = [];
@@ -5650,6 +5549,7 @@ var iA,
         return super.RangeSubselect(e, n);
       }
       SubLink(e, n) {
+        if (e.subLinkType === "ANY_SUBLINK" && !e.operName?.length && e.testexpr && e.subselect) return `${this.deparse(e.testexpr, n)} IN (${this.deparse(e.subselect, n)})`;
         if (["ANY_SUBLINK", "ALL_SUBLINK"].includes(e.subLinkType))
           throw new j(
             { SubLink: e },
@@ -5705,7 +5605,19 @@ var iA,
             .join("."),
           o = r.find((u) => u.DefElem?.defname === "language")?.DefElem?.arg
             ?.String?.sval;
-        if (i !== "trigger" || o !== "plpgsql")
+        if (i !== "trigger") {
+          const definition = compileSqlFunction(e, this, n);
+          const key = functionKey(definition), existing = this.sqlFunctions.get(key);
+          if (existing && !e.replace) throw new Error(`Function ${key} already exists`);
+          if (existing) {
+            if (existing.return_type !== definition.return_type || existing.return_is_setof !== definition.return_is_setof || existing.arg_names.join("\0") !== definition.arg_names.join("\0"))
+              throw new Error(`CREATE OR REPLACE cannot change the signature or result of ${key}`);
+            definition.grants = [...existing.grants];
+          }
+          this.sqlFunctions.set(key, definition);
+          return "";
+        }
+        if (o !== "plpgsql")
           throw new j(
             { CreateFunctionStmt: e },
             "Only trigger functions with LANGUAGE plpgsql are supported",
@@ -5715,7 +5627,7 @@ var iA,
         let l = r.find((u) => u.DefElem?.defname === "as")?.DefElem?.arg?.List
           ?.items?.[0]?.String?.sval;
         if (!l) throw new Error("Function has no body");
-        let c = this.plpgsqlParser.parse(l);
+        let c = parseTriggerFunction(l);
         return (this.triggerFunctions.set(a, c), "");
       }
       CreateTrigStmt(e, n) {
@@ -5730,91 +5642,17 @@ var iA,
             { CreateTrigStmt: e },
             `Trigger "${r}" references unknown function "${o}"`,
           );
-        let l =
-            e.timing === 2
-              ? "BEFORE"
-              : e.timing === 64
-                ? "INSTEAD OF"
-                : "AFTER",
-          c = [];
-        if (
-          (e.events & 4 && c.push("INSERT"),
-          e.events & 8 && c.push("DELETE"),
-          e.events & 16)
-        )
-          if (e.columns?.length) {
-            let d = e.columns.map((p) => p.String?.sval).filter(Boolean);
-            c.push(`UPDATE OF ${d.join(", ")}`);
-          } else c.push("UPDATE");
-        let u = c.join(" OR "),
-          f = this.buildTriggerBody(a, i, n);
-        return [
-          `CREATE TRIGGER ${s}`,
-          `${l} ${u} ON ${i}`,
-          "FOR EACH ROW",
-          "BEGIN",
-          ...f.map((d) => `  ${d};`),
-          "END",
-        ].join(`
-`);
+        return compileSqliteTrigger(e, a, this, n);
       }
-      buildTriggerBody(e, n, r) {
-        let s = [],
-          i = [];
-        for (let o of e.statements)
-          if (o.type !== "return") {
-            if (o.type === "assignment") {
-              i.push(o);
-              continue;
-            }
-            (i.length > 0 &&
-              (s.push(this.buildAssignmentUpdate(i, n, r)), (i.length = 0)),
-              o.type === "dml" && s.push(this.translateDml(o.sql, r)));
-          }
-        return (i.length > 0 && s.push(this.buildAssignmentUpdate(i, n, r)), s);
-      }
-      buildAssignmentUpdate(e, n, r) {
-        let s = e.map((i) => {
-          let o = this.translateExpression(i.expression, r);
-          return `${i.column} = ${o}`;
-        });
-        return `UPDATE ${n} SET ${s.join(", ")} WHERE rowid = NEW.rowid`;
-      }
-      translateExpression(e, n) {
-        try {
-          let r = `SELECT ${e}`,
-            s = e.trim().toLowerCase();
-          return s === "now()" || s === "current_timestamp"
-            ? "datetime('now')"
-            : e;
-        } catch {
-          return e;
-        }
-      }
-      flattenTriggerTableRef(e, n) {
-        return this.quoteBareIfNeeded(Ot(e, n));
-      }
-      translateDml(e, n) {
-        let r =
-          /^(\s*)(insert\s+into|update|delete\s+from)\s+(?:"([^"]+)"|(\w+))\s*\.\s*(?:"([^"]+)"|(\w+))/i;
-        return (
-          (e = e.replace(
-            r,
-            (s, i, o, a, l, c, u) =>
-              `${i}${o} ${this.flattenTriggerTableRef(a ?? l, c ?? u)}`,
-          )),
-          e
-            .replace(/\bnow\(\)/gi, "datetime('now')")
-            .replace(/\bcurrent_timestamp\b/gi, "datetime('now')")
-            .replace(/\bgen_random_uuid\(\)/gi, this.uuidExpression())
-            .replace(/\buuid_generate_v4\(\)/gi, this.uuidExpression())
-        );
-      }
+      buildTriggerBody(e, n, r) { return buildTriggerBody(e, n, this, r); }
+      translateExpression(e, n) { return translateTriggerExpression(e, this, n); }
+      flattenTriggerTableRef(e, n) { return this.quoteBareIfNeeded(Ot(e, n)); }
+      translateDml(e, n) { return translateTriggerDml(e, this, n); }
       uuidExpression() {
         return "lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || substr(lower(hex(randomblob(2))),2) || '-' || substr('89ab',abs(random()) % 4 + 1, 1) || substr(lower(hex(randomblob(2))),2) || '-' || lower(hex(randomblob(6)))";
       }
       NullTest(e, n) {
-        if (e.arg?.ColumnRef?.fields?.length > 1)
+        if (e.arg?.RowExpr)
           throw new j(
             { NullTest: e },
             "row-level NULL tests are not supported in SQLite",
@@ -5843,6 +5681,7 @@ var iA,
       }
       DropStmt(e, n) {
         let r = e.removeType;
+        if (r === "OBJECT_FUNCTION") { dropSqlFunction(e, this.sqlFunctions); return ""; }
         if (r === "OBJECT_EXTENSION") {
           let o = e.objects?.map(Yb) ?? [];
           if (o.length > 0 && o.every((a) => a && Of.has(a))) return "";
@@ -6176,8 +6015,11 @@ function Pf(t, e = {}) {
           `Policy "${f.data.name}" references unknown table "${f.data.table}"`,
         );
   }
+  l.sqlFunctionSchemas = s;
+  const ddl = l.deparseQuery();
   return {
-    ddl: l.deparseQuery(),
+    ddl,
+    functions: [...l.sqlFunctions.values()],
     enums: r,
     rls: { tables: u, policies: c },
     schema: s,
@@ -17113,6 +16955,7 @@ var bT = {
               n.req.header("Accept"),
             ) !== null;
         }
+        if (a && u === "sqlite") return await executeSqliteRpc(i, m, h, n.req.raw);
         t?.debug && console.log(Wc.default.dim("[POSTGREST:AST]"), m);
         let _ = ah({
           ast: m,
@@ -25334,7 +25177,28 @@ function ib(t, e = {}) {
           ),
           p.set("Access-Control-Max-Age", "86400")));
     };
+  const authOrigins = new Set(
+    [t.config.auth?.site_url ?? "http://localhost:3000", ...(t.config.auth?.additional_redirect_urls ?? [])]
+      .flatMap(value => {
+        try {
+          const url = new URL(value);
+          return ["http:", "https:"].includes(url.protocol) && !url.hostname.includes("*") ? [url.origin] : [];
+        } catch { return []; }
+      }),
+  );
+  const authCors = Td({ origin: [...authOrigins], allowMethods: r, allowHeaders: s, exposeHeaders: ["X-Sb-Error-Code"], maxAge: 86400 });
+  const configuredCorsOrigin = async (context, next) => {
+    await next();
+    const origin = context.req.header("Origin");
+    if (origin && authOrigins.has(origin)) context.header("Access-Control-Allow-Origin", origin);
+    else context.res.headers.delete("Access-Control-Allow-Origin");
+    context.res.headers.append("Vary", "Origin");
+  };
   return new Re()
+    .use("/auth/v1/*", configuredCorsOrigin)
+    .use("/auth/v1/*", authCors)
+    .use("/rest/v1/rpc/*", configuredCorsOrigin)
+    .use("/rest/v1/rpc/*", authCors)
     .use("/storage/v1/*", c)
     .use("/rest/v1/*", u)
     .use(async (f, d) => {
@@ -27030,6 +26894,7 @@ var bi = class t extends Ps {
           ...(a ? { schema: a } : {}),
           ...(l ? { tableConstraints: l } : {}),
           ...(c ? { comments: c } : {}),
+          functions: e.functions ?? [],
         };
       } catch (r) {
         if (n?.strict) throw r;
@@ -27056,6 +26921,7 @@ var bi = class t extends Ps {
           schema: i,
           tableConstraints: o,
           comments: a,
+          functions: e.functions ?? [],
         }),
       );
     }
@@ -27147,6 +27013,7 @@ var bi = class t extends Ps {
               : s,
           ),
           ddl_dialect: this.config.ddlDialect ?? "postgres",
+          functions: this.config.translation?.deparse?.functions ?? [],
         }),
         e?.postprocess !== false &&
           (await this.writeCachedIntrospection(r, { useDriver: n })),
@@ -27268,6 +27135,7 @@ var bi = class t extends Ps {
               vars: r.vars,
               tableConstraints: r.tableConstraints ?? [],
               comments: r.comments ?? [],
+              functions: r.functions ?? [],
             };
             this.updateDeparseInfo(s);
           }
@@ -27338,6 +27206,8 @@ var bi = class t extends Ps {
             1555: "SQLITE_CONSTRAINT_PRIMARYKEY",
             2067: "SQLITE_CONSTRAINT_UNIQUE",
           }[n?.cause?.errcode ?? n?.errcode] ?? r;
+      const triggerError = s?.match(/^([A-Z0-9]{5}):([\s\S]*)$/);
+      if (triggerError) return Object.assign(new Error(triggerError[2]), { code: triggerError[1] });
       if (r === "SQLITE_CONSTRAINT_CHECK")
         return Object.assign(new Error(s), { code: "23514", detail: s });
       if (r === "SQLITE_CONSTRAINT_NOTNULL")
@@ -27376,7 +27246,9 @@ var bi = class t extends Ps {
       }
       return e;
     }
+    get supportsRpc() { return true; }
     async onPostgrestAST(e, n) {
+      if (e.type === "rpc") return e;
       if (this.config.ddlDialect === "sqlite")
         return ((e.schema = void 0), await this.applyRls(e, n));
       if ((e.schema === se && (e.schema = void 0), !e.from)) return e;

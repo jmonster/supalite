@@ -53,15 +53,17 @@ test("same source returns false/nonzero when otherwise-valid data cannot replay"
   assert.match(human.stdout, /rehearsal failed/);
 });
 
-test("normal CLI dry-run output and exit behavior remain identical", async (t) => {
+test("human dry-run reports actual application rows and exits for the rehearsal outcome", async (t) => {
   const project = await fixture(t);
   for (const failing of [false, true]) {
     if (failing) await writeFile(resolve(project, pendingFile), "ALTER TABLE public.z_projects ADD CONSTRAINT bad_name CHECK (length(name) > 100);\n");
-    const original = await dryRun(project, { flavor: "baseline", json: false });
-    const candidate = await dryRun(project, { flavor: "upgrade", json: false });
-    assert.equal(candidate.code, original.code);
-    assert.equal(candidate.stdout, original.stdout);
-    assert.equal(candidate.stderr, original.stderr);
+    const candidate = await dryRun(project, { json: false });
+    assert.equal(candidate.code, failing ? 1 : 0);
+    assert.match(candidate.stdout, /public\.z_projects: 2 rows/);
+    assert.match(candidate.stdout, /public\.a_records: 2 rows/);
+    assert.match(candidate.stdout, /auth — users: 2/);
+    assert.match(candidate.stdout, /Readiness Report/);
+    assert.match(candidate.stdout, failing ? /rehearsal failed/ : /rehearsal passed/);
   }
 });
 

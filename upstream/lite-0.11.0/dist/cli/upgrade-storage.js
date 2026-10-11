@@ -531,13 +531,37 @@ export async function assertStorageEmpty(query) {
       `fresh target required: migration-seeded or existing storage.${rows[0].table_name} row ${JSON.stringify(rows[0].id)}; merging is unsupported`,
     );
 }
-export async function assertStorageShape(query, expected) {
+async function migrationBucketSeeds(query, snapshot) {
+  const objects = (await query("SELECT id::text FROM storage.objects LIMIT 1")).rows;
+  if (objects.length) fail("fresh target required: migration-seeded or existing Storage objects cannot be merged");
+  const seeds = (await query("SELECT * FROM storage.buckets ORDER BY id")).rows;
+  const source = new Map(snapshot.buckets.map(row => [row.id, row]));
+  for (const seed of seeds) {
+    const row = source.get(seed.id);
+    if (!row) fail(`migration-seeded bucket ${JSON.stringify(seed.id)} is absent from the source`);
+    for (const key of bucketColumns.filter(key => !key.endsWith("_at"))) {
+      const actual = key === "file_size_limit" && seed[key] !== null ? Number(seed[key]) : seed[key];
+      equal(actual, row[key], `migration-seeded bucket ${seed.id}.${key} conflicts with source`);
+    }
+  }
+  return seeds;
+}
+// The target was proved empty before schema replay. Replace only exact, empty
+// migration declarations so source creation times and ownership replay intact.
+export async function clearMigrationBucketSeeds(query, snapshot, removeBucket) {
+  const seeds = await migrationBucketSeeds(query, snapshot);
+  if (seeds.length && !removeBucket) fail("migration bucket replay requires the target Storage API");
+  for (const row of seeds) await removeBucket(row.id);
+  await assertStorageEmpty(query);
+}
+export async function assertStorageShape(query, expected, snapshot) {
   equal(
     await storageShape(query),
     expected,
     "unsupported custom Storage schema/trigger/dependency",
   );
-  await assertStorageEmpty(query);
+  if (snapshot) await migrationBucketSeeds(query, snapshot);
+  else await assertStorageEmpty(query);
 }
 // API verification reads can touch last_accessed_at; updated_at is target-derived.
 // Everything that determines bucket identity, ownership, location or file content
@@ -640,7 +664,12 @@ export async function transferStorage(app, snapshot, target, signal) {
     return result;
   };
   await assertStorageUnchanged(app, snapshot);
-  await assertStorageEmpty(query);
+  await clearMigrationBucketSeeds(query, snapshot, async id => {
+    signal?.throwIfAborted();
+    const response = await fetch(`${origin}/storage/v1/bucket/${encodeURIComponent(id)}`, { method: "DELETE", headers: headers(target), signal, redirect: "error" });
+    await cancel(response.body);
+    if (!response.ok) fail(`migration bucket ${id}: Storage API deletion failed (HTTP ${response.status})`);
+  });
   for (const row of snapshot.buckets)
     await query(insert("buckets", row));
   for (const object of snapshot.objects) {
