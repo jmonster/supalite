@@ -2580,11 +2580,30 @@ interface DeparseOptions extends DeparserOptions {
     serialColumns?: WeakSet<object>;
 }
 
+interface SqliteSqlFunction {
+    schema: string;
+    name: string;
+    args: Array<{ name: string; type: string; default?: unknown }>;
+    statements: Array<{ sql: string; kind: string; slots: Array<{ argument: number } | { claim: "uid" | "role" | "jwt" }> }>;
+    definer: boolean;
+    grants: string[];
+    arg_names: string[];
+    arg_types: string[];
+    arg_defaults: number;
+    has_variadic: false;
+    volatility: "s" | "i" | "v";
+    return_type: string;
+    return_is_setof: boolean;
+    return_typtype: "b" | "c" | "p";
+    has_out_args: false;
+}
+
 declare function translatePostgresDdl(pgSql: string, options?: DeparseOptions): Promise<string>;
 declare function deparsePostgresDdl(pgSql: string, options?: DeparseOptions & {
     strict?: boolean;
 }): Promise<{
     ddl: string;
+    functions: SqliteSqlFunction[];
     enums: CollectedEnums;
     rls: {
         tables: CollectedRlsTables;
@@ -2662,7 +2681,7 @@ interface ISqliteConnectionConfig extends IConnectionConfig {
     };
 }
 type DeparsePostgresDdlResult = Awaited<ReturnType<typeof deparsePostgresDdl>>;
-type SqlitePostgresDeparseInfo = Pick<DeparsePostgresDdlResult, "enums" | "rls" | "schema" | "vars"> & Partial<Pick<DeparsePostgresDdlResult, "tableConstraints" | "comments">>;
+type SqlitePostgresDeparseInfo = Pick<DeparsePostgresDdlResult, "enums" | "rls" | "schema" | "vars"> & Partial<Pick<DeparsePostgresDdlResult, "tableConstraints" | "comments" | "functions">>;
 /**
  * The JSON-serializable form of the deparse info, rehydrated by
  * {@link SqliteConnection.parseDeparseInfo}. Covers the full runtime shape
@@ -2679,6 +2698,7 @@ type SqlitePostgresDeparseInfo = Pick<DeparsePostgresDdlResult, "enums" | "rls" 
  * Produced by {@link SqliteConnection.serializeDeparseInfo}.
  */
 interface PersistedDeparseInfo {
+    functions?: SqliteSqlFunction[];
     rls: {
         tables: string[];
         policies: PolicyData[];
@@ -3026,4 +3046,4 @@ declare function isExperimentalEnabled(name: ExperimentalFeature): boolean;
 declare function setExperimental(name: ExperimentalFeature, enabled: boolean): void;
 declare function listEnabledExperimentals(): ExperimentalFeature[];
 
-export { AnyAST, type ApiKeyResolver, type ApiKeyType, App, type AppDrivers, type AppDriversConfig, type AppRequestContext, AwsSesEmailDriver, type AwsSesEmailDriverOptions, type BooleanLike, CacheDriver, CacheSetOptions, CloudConnection, CloudflareKvCacheDriver, type CloudflareKvCacheDriverOptions, Connection, ConnectionMigrator, ConsoleEmailDriver, type ConsoleEmailDriverOptions, type DefaultAppConfig, Dialect$1 as Dialect, type EmailDriver, type EmailMessage, type ExperimentalFeature, type GeneratedApiKey, type HistoryVariant, type HonoContext, type IAppConfig, type ICloudConnectionConfig, IConnectionConfig, type ISqliteConnectionConfig, InMemoryEmailDriver, type InMemoryEmailDriverOptions, InMemoryLruCacheDriver, type InMemoryLruCacheDriverOptions, IntrospectResult, InvalidPostgresToSQLiteTranslation, type MatchPattern, type MaybePromise, MigrateScope, type MigrationHistoryRow, NoopSmsDriver, type NoopSmsDriverOptions, type PartialAppDrivers, type PersistedDeparseInfo, PlanResult, PlanStep, Policy, type PolicyCommand, type PolicyData, type PolicyRole, type Primitive, type RedisCacheClient, RedisCacheDriver, type RedisCacheDriverOptions, ResendEmailDriver, type ResendEmailDriverOptions, type ResolvedKey, SELF_HOSTED_PROJECT_REF, SUPABASE_AUTH_HELPERS_SQL, Schema, SchemaDiffResult, SendmailEmailDriver, type SendmailEmailDriverOptions, type ServerOptions, type SmsDriver, type SmsMessage, type SmtpAddress, type SmtpCreateTransport, SmtpEmailDriver, type SmtpEmailDriverOptions, type SmtpTransporter, SqliteConnection, type SqlitePostgresDdlTranslator, type SqlitePostgresDeparseInfo, type SqlitePostgresTranslationOptions, type SqlitePostgresTranslationResult, type StoredEmailMessage, TransactionOptions, UnableToCreateRuntimeConnection, VarsContext, Where, apiKeyType, appliedVersions, assertSmtpSupportedRuntime, buildSmtpMail, buildSmtpTransportOptions, checkPasswordStrength, cleanSql, cloud, createAppDrivers, ensureHistoryTable, ensureVar, filterSearchParams, formatSendmailMessage, fuzzyMatch, generateApiKey, getAuthSchemaSql, getMigrationHistorySchemaSql, getPath, getStatementsArray, getStorageSchemaSql, getVersion, hashApiKey, historyVariant, invariant, isBooleanLike, isBun, isEmail, isEqual, isExperimentalEnabled, isLoopbackAddress, isLoopbackHostname, isNode, isObject, isPlainObject, isPrimitive, isString, isWorkerd, jsonStringify, listEnabledExperimentals, listHistory, measureTime, mergeObject, mergeObjectWith, normalizeDefault, normalizeSql, normalizeString, normalizeType, objectDiff, omit, params, parseBigInt, patternMatch, pick, pipe, pipeEach, quote, randomString, recordVersion, removeVersion, removeVersionsGte, replacePlaceholders, requireAuth, resolveAuth, setExperimental, setPath, slugify, snakeToPascalWithSpaces, splitSqlStatements, studioRouteHandler, tableStructuralItems, threw, threwAsync, translatePostgresDdl, truncate, trySync, ucFirst, ucFirstAll, uuid };
+export { AnyAST, type ApiKeyResolver, type ApiKeyType, App, type AppDrivers, type AppDriversConfig, type AppRequestContext, AwsSesEmailDriver, type AwsSesEmailDriverOptions, type BooleanLike, CacheDriver, CacheSetOptions, CloudConnection, CloudflareKvCacheDriver, type CloudflareKvCacheDriverOptions, Connection, ConnectionMigrator, ConsoleEmailDriver, type ConsoleEmailDriverOptions, type DefaultAppConfig, Dialect$1 as Dialect, type EmailDriver, type EmailMessage, type ExperimentalFeature, type GeneratedApiKey, type HistoryVariant, type HonoContext, type IAppConfig, type ICloudConnectionConfig, IConnectionConfig, type ISqliteConnectionConfig, InMemoryEmailDriver, type InMemoryEmailDriverOptions, InMemoryLruCacheDriver, type InMemoryLruCacheDriverOptions, IntrospectResult, InvalidPostgresToSQLiteTranslation, type MatchPattern, type MaybePromise, MigrateScope, type MigrationHistoryRow, NoopSmsDriver, type NoopSmsDriverOptions, type PartialAppDrivers, type PersistedDeparseInfo, PlanResult, PlanStep, Policy, type PolicyCommand, type PolicyData, type PolicyRole, type Primitive, type RedisCacheClient, RedisCacheDriver, type RedisCacheDriverOptions, ResendEmailDriver, type ResendEmailDriverOptions, type ResolvedKey, SELF_HOSTED_PROJECT_REF, SUPABASE_AUTH_HELPERS_SQL, Schema, SchemaDiffResult, SendmailEmailDriver, type SendmailEmailDriverOptions, type ServerOptions, type SmsDriver, type SmsMessage, type SmtpAddress, type SmtpCreateTransport, SmtpEmailDriver, type SmtpEmailDriverOptions, type SmtpTransporter, SqliteConnection, type SqliteSqlFunction, type SqlitePostgresDdlTranslator, type SqlitePostgresDeparseInfo, type SqlitePostgresTranslationOptions, type SqlitePostgresTranslationResult, type StoredEmailMessage, TransactionOptions, UnableToCreateRuntimeConnection, VarsContext, Where, apiKeyType, appliedVersions, assertSmtpSupportedRuntime, buildSmtpMail, buildSmtpTransportOptions, checkPasswordStrength, cleanSql, cloud, createAppDrivers, ensureHistoryTable, ensureVar, filterSearchParams, formatSendmailMessage, fuzzyMatch, generateApiKey, getAuthSchemaSql, getMigrationHistorySchemaSql, getPath, getStatementsArray, getStorageSchemaSql, getVersion, hashApiKey, historyVariant, invariant, isBooleanLike, isBun, isEmail, isEqual, isExperimentalEnabled, isLoopbackAddress, isLoopbackHostname, isNode, isObject, isPlainObject, isPrimitive, isString, isWorkerd, jsonStringify, listEnabledExperimentals, listHistory, measureTime, mergeObject, mergeObjectWith, normalizeDefault, normalizeSql, normalizeString, normalizeType, objectDiff, omit, params, parseBigInt, patternMatch, pick, pipe, pipeEach, quote, randomString, recordVersion, removeVersion, removeVersionsGte, replacePlaceholders, requireAuth, resolveAuth, setExperimental, setPath, slugify, snakeToPascalWithSpaces, splitSqlStatements, studioRouteHandler, tableStructuralItems, threw, threwAsync, translatePostgresDdl, truncate, trySync, ucFirst, ucFirstAll, uuid };

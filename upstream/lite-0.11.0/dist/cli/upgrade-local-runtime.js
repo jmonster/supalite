@@ -31,7 +31,8 @@ export function resolveLocalRuntime(runtime, target) {
 }
 
 export function nativeCommand(operation, directory, { storage = false, functions = false } = {}) {
-  const base = ["stack", operation, "--workdir", directory];
+  const stack = `lite-${createHash("sha256").update(resolve(directory)).digest("hex").slice(0, 24)}`;
+  const base = ["stack", operation, "--workdir", directory, "--stack", stack];
   if (operation === "start") return [...base, "--runtime", "native", "--eager", "--exclude", [
     "realtime", "studio", "mail", "analytics", "pooler", ...(!storage ? ["storage"] : []), ...(!functions ? ["functions"] : []),
   ].join(","), "--output-format", "json"];

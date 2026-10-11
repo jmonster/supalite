@@ -70,6 +70,10 @@ test("native local target uses official stack lifecycle and preserves supported 
   assert.deepEqual(commands.map(command => command.args.slice(0, 2)), [["--version"], ["init", "--workdir"], ["stack", "start"], ["stack", "status"], ["stack", "stop"]]);
   assert.ok(commands.every(command => command.experimental === "1"));
   assert.ok(commands[2].args.includes("--eager"));
+  const stackNames = commands.filter(command => command.args[0] === "stack")
+    .map(command => command.args[command.args.indexOf("--stack") + 1]);
+  assert.match(stackNames[0], /^lite-[a-f0-9]{24}$/);
+  assert.equal(new Set(stackNames).size, 1);
   assert.ok(!commands.at(-1).args.includes("--all") && !commands.at(-1).args.includes("--no-backup"));
 });
 
@@ -77,7 +81,10 @@ test("native launch failure stops only the owned stack and leaves source unchang
   const f = await fixture(t, { failStart: true });
   await assert.rejects(LocalSupabaseTarget.start({ runtime: "native", workdir: f.target, sourceDirectory: f.source, cleanupOnStop: false }), /fixture launch refused/);
   const commands = await f.commands();
-  assert.deepEqual(commands.at(-1).args, ["stack", "stop", "--workdir", f.target, "--output-format", "json"]);
+  const start = commands.find(command => command.args[1] === "start");
+  const stackName = start.args[start.args.indexOf("--stack") + 1];
+  assert.match(stackName, /^lite-[a-f0-9]{24}$/);
+  assert.deepEqual(commands.at(-1).args, ["stack", "stop", "--workdir", f.target, "--stack", stackName, "--output-format", "json"]);
   assert.match(await readFile(join(f.source, "supabase/functions/tasks/index.ts"), "utf8"), /portable/);
 });
 

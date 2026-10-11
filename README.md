@@ -21,12 +21,20 @@ For the complete route, follow the [graduation guide](examples/functions-portabl
 
 Bun hosts Lite, SQLite and trusted function workers in one process. Functions use ordinary imports and default `{ fetch }` handlers, with host permissions. See [runtime support and limits](upstream/lite-0.11.0/docs/other/edge-functions.mdx).
 
+## SQL application compatibility
+
+[Poolometer compatibility and limits](docs/poolometer-compatibility.md): transactional SQLite SQL RPCs, partial indexes, the supported trigger subset, and populated graduation to full native Supabase with the same SDK and migration.
+
 ## Evidence and review
 
 - [Lifecycle measurements](docs/evidence/README.md): reproducible restarts, persisted Auth/data/private-file checks, timing, memory and measurement scope
 - [JSONB design](docs/design-and-porting.md) and [benchmark reproduction](docs/performance.md)
 
-Optionally run `bun run test` for the supported suite. Tests import the tracked implementation; [native-Node streaming cases remain skipped under Bun](docs/streaming-upgrade.md#verification).
+Optionally run `bun run test` for the supported suite. Tests import the tracked implementation; [native-Node streaming cases remain skipped under Bun](docs/streaming-upgrade.md#verification). On macOS, use canonical temporary paths and disable Bun's runtime transpiler cache so isolated filesystem fixtures remain empty:
+
+```sh
+TMPDIR=/private/tmp BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 bun run test
+```
 
 ## Package and provenance
 

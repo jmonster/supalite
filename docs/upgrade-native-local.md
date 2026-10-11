@@ -50,10 +50,11 @@ publishable key; `serviceRoleKey` retains its legacy JWT for Storage import, whi
 `secretKey` separately records the opaque key when available. Keep dumps and
 credential-bearing status output private.
 
-The target remains running after success. Stop only this owned stack:
+The adapter gives each absolute destination path its own `lite-` stack name, computed from SHA-256. All start, status, and stop calls include that name. The target remains running after success. Stop only this owned stack:
 
 ```sh
-SUPABASE_EXPERIMENTAL_STACK=1 supabase stack stop --workdir ../graduated-project --output-format json
+stack_name="$(node --input-type=module -e 'import {createHash} from "node:crypto"; import {resolve} from "node:path"; console.log("lite-"+createHash("sha256").update(resolve(process.argv[1])).digest("hex").slice(0,24));' ../graduated-project)"
+SUPABASE_EXPERIMENTAL_STACK=1 supabase stack stop --workdir ../graduated-project --stack "$stack_name" --output-format json
 ```
 
 Stop preserves data. Cleanup is confirmed only when its JSON acknowledges the

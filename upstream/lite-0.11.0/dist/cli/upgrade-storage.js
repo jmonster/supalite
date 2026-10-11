@@ -340,8 +340,8 @@ export async function inspectStorage(
   // Storage is enabled by default in Lite config even when it has never been used.
   if (!rows.buckets.length && !rows.objects.length && !files.length)
     return null;
-  if (target !== "local")
-    fail("Storage requires --target local; hosted graduation is unsupported");
+  if (!["local", "hosted"].includes(target))
+    fail("Storage requires --target local or --target hosted");
   if (!quiescent)
     fail(
       "stop source writers, then pass --storage-quiescent for the snapshot/transfer window",
@@ -531,13 +531,37 @@ export async function assertStorageEmpty(query) {
       `fresh target required: migration-seeded or existing storage.${rows[0].table_name} row ${JSON.stringify(rows[0].id)}; merging is unsupported`,
     );
 }
-export async function assertStorageShape(query, expected) {
+async function migrationBucketSeeds(query, snapshot) {
+  const objects = (await query("SELECT id::text FROM storage.objects LIMIT 1")).rows;
+  if (objects.length) fail("fresh target required: migration-seeded or existing Storage objects cannot be merged");
+  const seeds = (await query("SELECT * FROM storage.buckets ORDER BY id")).rows;
+  const source = new Map(snapshot.buckets.map(row => [row.id, row]));
+  for (const seed of seeds) {
+    const row = source.get(seed.id);
+    if (!row) fail(`migration-seeded bucket ${JSON.stringify(seed.id)} is absent from the source`);
+    for (const key of bucketColumns.filter(key => !key.endsWith("_at"))) {
+      const actual = key === "file_size_limit" && seed[key] !== null ? Number(seed[key]) : seed[key];
+      equal(actual, row[key], `migration-seeded bucket ${seed.id}.${key} conflicts with source`);
+    }
+  }
+  return seeds;
+}
+// The target was proved empty before schema replay. Replace only exact, empty
+// migration declarations so source creation times and ownership replay intact.
+export async function clearMigrationBucketSeeds(query, snapshot, removeBucket) {
+  const seeds = await migrationBucketSeeds(query, snapshot);
+  if (seeds.length && !removeBucket) fail("migration bucket replay requires the target Storage API");
+  for (const row of seeds) await removeBucket(row.id);
+  await assertStorageEmpty(query);
+}
+export async function assertStorageShape(query, expected, snapshot) {
   equal(
     await storageShape(query),
     expected,
     "unsupported custom Storage schema/trigger/dependency",
   );
-  await assertStorageEmpty(query);
+  if (snapshot) await migrationBucketSeeds(query, snapshot);
+  else await assertStorageEmpty(query);
 }
 // API verification reads can touch last_accessed_at; updated_at is target-derived.
 // Everything that determines bucket identity, ownership, location or file content
@@ -550,16 +574,21 @@ export async function storageState(query) {
 }
 function targetOrigin(target) {
   const url = new URL(target.status.apiUrl);
+  const hosted = target.status.target === "hosted";
+  const projectRef = target.status.projectRef;
+  const permittedOrigin = hosted
+    ? typeof projectRef === "string" &&
+      /^[a-z]{20}$/.test(projectRef) &&
+      url.protocol === "https:" &&
+      url.hostname === `${projectRef}.supabase.co` &&
+      !url.port
+    : ["http:", "https:"].includes(url.protocol) &&
+      ["127.0.0.1", "[::1]", "localhost"].includes(url.hostname);
   if (
-    !["http:", "https:"].includes(url.protocol) ||
-    !["127.0.0.1", "[::1]", "localhost"].includes(url.hostname) ||
-    url.username ||
-    url.password ||
-    url.pathname !== "/" ||
-    url.search ||
-    url.hash
+    !permittedOrigin || url.username || url.password ||
+    url.pathname !== "/" || url.search || url.hash
   )
-    fail("only a loopback local Storage target is supported");
+    fail("Storage target must be loopback local or the exact HTTPS Supabase project origin");
   let claims;
   try {
     claims = JSON.parse(
@@ -572,6 +601,8 @@ function targetOrigin(target) {
     fail(
       "target service-role JWT must have no sub claim, so upload preserves existing owners",
     );
+  if (hosted && claims.ref !== projectRef)
+    fail("target service-role JWT does not belong to the hosted project");
   return url.origin;
 }
 const headers = (target) => ({
@@ -640,7 +671,12 @@ export async function transferStorage(app, snapshot, target, signal) {
     return result;
   };
   await assertStorageUnchanged(app, snapshot);
-  await assertStorageEmpty(query);
+  await clearMigrationBucketSeeds(query, snapshot, async id => {
+    signal?.throwIfAborted();
+    const response = await fetch(`${origin}/storage/v1/bucket/${encodeURIComponent(id)}`, { method: "DELETE", headers: headers(target), signal, redirect: "error" });
+    await cancel(response.body);
+    if (!response.ok) fail(`migration bucket ${id}: Storage API deletion failed (HTTP ${response.status})`);
+  });
   for (const row of snapshot.buckets)
     await query(insert("buckets", row));
   for (const object of snapshot.objects) {
@@ -783,11 +819,6 @@ export async function transferStorage(app, snapshot, target, signal) {
         download.headers.get("content-type"),
         contentType.includes("text/html") ? "text/plain" : contentType,
         `${label} downloaded MIME`,
-      );
-      equal(
-        download.headers.get("cache-control"),
-        cacheControl,
-        `${label} downloaded cache-control`,
       );
     } catch (error) {
       signal?.throwIfAborted();

@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+import { isIsoTimestamp as qE } from "../timestamp-storage.js";
+import { hostedUpgradeTarget } from "./upgrade-hosted-target.js";
+import { withUpgradeApplicationTriggers } from "./upgrade-triggers.js";
 import {
   runUpgradeDryRun,
   writeUpgradeDryRunReport,
@@ -25,7 +28,7 @@ import {
 } from "./sqlite-streaming.js";
 import {
   inspectStorage, assertStorageUnchanged, storageInserts, storageShape,
-  assertStorageShape, assertStorageEmpty, storageState,
+  assertStorageShape, assertStorageEmpty, clearMigrationBucketSeeds, storageState,
   requireFreshStorageDirectory, waitForStorage, transferStorage,
 } from "./upgrade-storage.js";
 import { isAuthUidDefault } from "../auth-uid-defaults.js";
@@ -9606,28 +9609,6 @@ var $r,
       }
     };
   });
-function qE(e) {
-  let t = e.match(
-    /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,6})?)?(?:Z|([+-](\d{2}):?(\d{2})))?$/,
-  );
-  if (!t) return false;
-  let n = Number(t[1]),
-    r = Number(t[2]),
-    s = Number(t[3]),
-    i = Number(t[4]),
-    o = Number(t[5]),
-    a = t[6] === void 0 ? 0 : Number(t[6]),
-    l = t[8] === void 0 ? null : Number(t[8]),
-    c = t[9] === void 0 ? null : Number(t[9]),
-    p = new Date(Date.UTC(n, r - 1, s)),
-    u =
-      p.getUTCFullYear() === n &&
-      p.getUTCMonth() === r - 1 &&
-      p.getUTCDate() === s,
-    f = i <= 24 && o <= 59 && a <= 59 && (i !== 24 || (o === 0 && a === 0)),
-    h = l === null || (c !== null && l <= 15 && c <= 59);
-  return u && f && h;
-}
 var Rr,
   wl = b(() => {
     Ue();
@@ -17787,8 +17768,8 @@ async function xh(e) {
     let i = s.name,
       o = s.schema,
       a =
-        r === "sqlite" && o && o !== "main"
-          ? `"${o}.${i}"`
+        r === "sqlite"
+          ? o && o !== "main" && o !== "public" ? `"${o}.${i}"` : `"${i}"`
           : o
             ? `"${o}"."${i}"`
             : `"${i}"`,
@@ -17798,9 +17779,8 @@ async function xh(e) {
     try {
       let h = await e.connection.exec(`SELECT COUNT(*) as c FROM ${a}`);
       c = Number(h?.rows?.[0]?.c ?? 0);
-    } catch {
-      n.push({ table: i, schema: o, rowCount: 0, issues: p });
-      continue;
+    } catch (error) {
+      throw new Error(`Readiness could not count ${o ?? "public"}.${i}`, { cause: error });
     }
     if (c === 0) {
       n.push({ table: i, schema: o, rowCount: c, issues: p });
@@ -18434,7 +18414,7 @@ function AT(e) {
   return `'${e.replace(/'/g, "''")}'`;
 }
 function ot(e) {
-  return /^[a-z_][a-z0-9_]*$/.test(e) ? e : `"${e.replace(/"/g, '""')}"`;
+  return `"${e.replace(/"/g, '""')}"`;
 }
 function $T(e, t) {
   let n = [ot(e.column_name)];
@@ -18842,7 +18822,11 @@ async function Ih(e, t, { storage } = {}) {
           }
         );
       }
-    if (storage) await assertStorageShape((sql) => r.query(sql), storageBefore);
+    if (storage) await assertStorageShape((sql) => r.query(sql), storageBefore, storage);
+    const applicationSchemas = [...new Set((await e.connection.introspect()).tables
+      .filter(table => !PT.has(ao(table.schema)) && !isUpgradeMigrationMetadata(table))
+      .map(table => ao(table.schema)))];
+    await withUpgradeApplicationTriggers(sql => r.exec(sql), applicationSchemas, async () => {
     let u = await ro(e, { target: "local" }),
       f = ["users", "sessions", "identities", "refresh_tokens"];
     for (let m of f) {
@@ -18862,7 +18846,8 @@ async function Ih(e, t, { storage } = {}) {
       }
     }
     if (storage) {
-      await assertStorageShape((sql) => r.query(sql), storageBefore);
+      await assertStorageShape((sql) => r.query(sql), storageBefore, storage);
+      await clearMigrationBucketSeeds(sql => r.query(sql), storage, id => r.query(`DELETE FROM storage.buckets WHERE id=${Pn(id)}`));
       for (const sql of storageInserts(storage)) await r.exec(sql);
     }
     const storageBeforeData = storage
@@ -18907,6 +18892,7 @@ async function Ih(e, t, { storage } = {}) {
     if (storage && (await storageState((sql) => r.query(sql))) !== storageBeforeData) {
       throw new Error("Application-row import changed Storage records; this trigger/dependency is unsupported");
     }
+    });
   } catch (error) {
     if (!storage) throw error;
     s.push({ phase: "storage", label: "Storage rehearsal", statement: "", error: String(error) });
@@ -19386,7 +19372,11 @@ async function Lc(e, t, n, r) {
   }
   r.onSchemaEnd?.(n.statements.length);
   r.signal?.throwIfAborted();
-  if (storage) await assertStorageShape(storageQuery, storageBefore);
+  if (storage) await assertStorageShape(storageQuery, storageBefore, storage);
+  const applicationSchemas = [...new Set((await e.connection.introspect()).tables
+    .filter(table => !PT.has(ao(table.schema)) && !isUpgradeMigrationMetadata(table))
+    .map(table => ao(table.schema)))];
+  return withUpgradeApplicationTriggers(sql => t.runSql(sql), applicationSchemas, async () => {
   let i = await ro(e, { target: r.authTarget ?? "supabase" }),
     o = {
       users: i.users.length,
@@ -19404,7 +19394,7 @@ async function Lc(e, t, n, r) {
           `Skipped ${i.sessions.length} sessions and ${i.refresh_tokens.length} refresh tokens (existing tokens will be invalidated).`,
         ));
   if (storage) {
-    await assertStorageShape(storageQuery, storageBefore);
+    await assertStorageShape(storageQuery, storageBefore, storage);
     r.onBatchStart?.("Migrating and verifying Storage", storage.objects.length);
   }
   const storageResult = storage ? await transferStorage(e, storage, t, r.signal) : null;
@@ -19454,6 +19444,7 @@ async function Lc(e, t, n, r) {
   } finally {
     await disposeUserData(a, dataError);
   }
+  });
 }
 var Xh = b(() => {
   Wh();
@@ -20418,18 +20409,19 @@ ${j}`),
                 }
                 x.stop("JWT signing key imported");
               }
+              const T = yh(await u.getApiKeys(C)),
+                L = `https://${C}.${u.projectDomain}`,
+                hostedTarget = hostedUpgradeTarget(u, C, L, T.service_role);
               let A = (
                   await Wr("apply", () =>
                     Lc(
                       i,
-                      {
-                        runSql: (R) => u.runSql(C, R),
-                        updateAuthConfig: (R) => u.updateAuthConfig(C, R),
-                      },
+                      hostedTarget,
                       o,
                       {
                         migrateSessions: y,
                         authTarget: "supabase",
+                        storage: a.storage,
                         signal: x.signal,
                         onSql: (R, F) => {
                           t.verbose &&
@@ -20466,8 +20458,6 @@ ${R}`),
                     ),
                   )
                 ).auth,
-                T = yh(await u.getApiKeys(C)),
-                L = `https://${C}.${u.projectDomain}`,
                 E = [];
               if (
                 (y
@@ -20481,8 +20471,6 @@ ${R}`),
                   : E.push(
                       "Sessions and JWT secret not migrated. Existing tokens are invalid \u2014 users must re-authenticate.",
                     ),
-                i.config.storage?.enabled &&
-                  E.push("Storage migration is not yet supported."),
                 i.config.realtime?.enabled &&
                   E.push("Realtime config migration is not yet supported."),
                 t.dumpCredentials)
@@ -20498,7 +20486,7 @@ ${R}`),
                   null,
                   2,
                 );
-                (await he__default.writeFile(t.dumpCredentials, R, "utf-8"),
+                (await writeLocalCredentials(t.dumpCredentials, R),
                   console.log(
                     Ce.default.dim(
                       `Credentials written to ${t.dumpCredentials}`,

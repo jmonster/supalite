@@ -27,9 +27,11 @@ test("native is explicit and official commands never silently fall back", () => 
   assert.throws(() => resolveLocalRuntime("native", "hosted"), /only applies/);
   assert.throws(() => resolveLocalRuntime("auto", "local"), /unknown local runtime/);
   assert.equal(NATIVE_CLI_VERSION, "2.119.0");
-  assert.deepEqual(nativeCommand("start", "/target", { functions: true, storage: true }), ["stack", "start", "--workdir", "/target", "--runtime", "native", "--eager", "--exclude", "realtime,studio,mail,analytics,pooler", "--output-format", "json"]);
+  assert.deepEqual(nativeCommand("start", "/target", { functions: true, storage: true }), ["stack", "start", "--workdir", "/target", "--stack", nativeCommand("status", "/target")[5], "--runtime", "native", "--eager", "--exclude", "realtime,studio,mail,analytics,pooler", "--output-format", "json"]);
+  assert.notEqual(nativeCommand("start", "/target")[5], nativeCommand("start", "/another-target")[5]);
+  assert.equal(nativeCommand("start", "/target")[5], nativeCommand("stop", "/target")[5]);
   assert.ok(nativeCommand("start", "/target").includes("realtime,studio,mail,analytics,pooler,storage,functions"));
-  assert.deepEqual(nativeCommand("stop", "/target"), ["stack", "stop", "--workdir", "/target", "--output-format", "json"]);
+  assert.deepEqual(nativeCommand("stop", "/target"), ["stack", "stop", "--workdir", "/target", "--stack", nativeCommand("status", "/target")[5], "--output-format", "json"]);
 });
 
 test("native status prefers publishable keys, retains Storage JWT, and accepts absent signing secret", () => {

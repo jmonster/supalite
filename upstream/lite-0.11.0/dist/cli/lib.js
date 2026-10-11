@@ -1,3 +1,4 @@
+import { isIsoTimestamp as Fc } from "../timestamp-storage.js";
 import "pgsql-deparser";
 import * as le from "node:path";
 import le__default from "node:path";
@@ -2657,28 +2658,6 @@ var Rt,
       }
     };
   });
-function Fc(t) {
-  let e = t.match(
-    /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,6})?)?(?:Z|([+-](\d{2}):?(\d{2})))?$/,
-  );
-  if (!e) return false;
-  let n = Number(e[1]),
-    r = Number(e[2]),
-    i = Number(e[3]),
-    s = Number(e[4]),
-    o = Number(e[5]),
-    a = e[6] === void 0 ? 0 : Number(e[6]),
-    c = e[8] === void 0 ? null : Number(e[8]),
-    l = e[9] === void 0 ? null : Number(e[9]),
-    p = new Date(Date.UTC(n, r - 1, i)),
-    f =
-      p.getUTCFullYear() === n &&
-      p.getUTCMonth() === r - 1 &&
-      p.getUTCDate() === i,
-    u = s <= 24 && o <= 59 && a <= 59 && (s !== 24 || (o === 0 && a === 0)),
-    m = c === null || (l !== null && c <= 15 && l <= 59);
-  return f && u && m;
-}
 var kt,
   pr = F(() => {
     ce();
@@ -7141,7 +7120,7 @@ function Zn(t) {
   return oe(t.connection) === "pg-flat";
 }
 var Zi = "supabase/.temp/.runtime-metadata-cache.json",
-  hc = 4,
+  hc = 5,
   Yi = new WeakMap();
 function yc() {
   return le__default.join(process.cwd(), Zi);
@@ -7290,7 +7269,7 @@ async function es(t) {
 }
 var Ts = ["./schemas/*.sql"],
   As = "supabase/.temp/.translation-cache.json",
-  Cs = 3;
+  Cs = 4;
 async function uu(t, e) {
   let n = await t.connection.introspect(),
     r = we(n);
@@ -7454,36 +7433,20 @@ async function yu(t, e, n) {
     !n ||
     o.dbFingerprint !== n ||
     !o.ast ||
-    typeof o.ast != "object"
+    typeof o.ast != "object" ||
+    !o.deparse
   )
     return false;
   try {
-    let a = await Promise.resolve().then(() => (ws(), bs)),
-      c = o.ast,
-      l = a.collectEnums(c),
-      p = a.collectSchema(c, l),
-      f = a.collectVariables(c),
-      u = a.collectTableConstraints(c),
-      m = a.collectComments(c),
-      { policies: d, tables: b } = a.collectPolicies(c);
-    return (
-      r.updateDeparseInfo({
-        enums: l,
-        rls: { tables: b, policies: d },
-        schema: p,
-        vars: f,
-        tableConstraints: u,
-        comments: m,
-      }),
-      !0
-    );
+    r.updateDeparseInfo(SqliteConnection.parseDeparseInfo(o.deparse, { strict: true }));
+    return true;
   } catch {
     return false;
   }
 }
 async function Ss(t, e, n, r) {
   if (!n || typeof n != "object") return;
-  let i = { v: Cs, hash: Lt(t, e), dbFingerprint: r, ast: n },
+  let i = { v: Cs, hash: Lt(t, e), dbFingerprint: r, ast: n, deparse: SqliteConnection.serializeDeparseInfo(t.connection.config.translation?.deparse) },
     s = le__default.join(process.cwd(), As);
   try {
     (await W__default.mkdir(le__default.dirname(s), { recursive: !0 }),
@@ -7882,6 +7845,7 @@ async function Iu(t) {
       s.push(...yt(l)),
       o.push(c));
   }
+  if (e === "pg-flat") await kc(t);
   return { applied: o, skipped: a };
 }
 /*! Bundled license information:
