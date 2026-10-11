@@ -10,4 +10,6 @@ Graduation quotes reconstructed identifiers, reports actual table counts, neutra
 
 Each native destination owns `lite-` plus the first 24 hex characters of SHA-256 of its absolute directory path. Start/status/stop pass this explicit stack name. The default stack is never selected by the native adapter.
 
+Hosted graduation uses the same Storage replay and verification pipeline as local graduation. Management API SQL row arrays are normalized before trigger suppression and verification. Hosted Storage requires the exact project HTTPS origin and a service-role JWT bound to that project; redirects and arbitrary origins are rejected. Timestamp audits accept valid ISO dates at midnight, including early calendar years, and reject invalid dates without JavaScript Date normalization.
+
 Focused coverage includes both SQLite drivers for RPC and CORS, trigger-definition restoration, reserved-name reconstruction, exact bucket seed matching, native stack isolation, Storage replay, truthful readiness counts, and dry-run success/failure channels. Hosted Supabase deployment has not been qualified by this local integration.

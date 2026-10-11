@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { isIsoTimestamp as qE } from "../timestamp-storage.js";
+import { hostedUpgradeTarget } from "./upgrade-hosted-target.js";
 import { withUpgradeApplicationTriggers } from "./upgrade-triggers.js";
 import {
   runUpgradeDryRun,
@@ -9607,28 +9609,6 @@ var $r,
       }
     };
   });
-function qE(e) {
-  let t = e.match(
-    /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,6})?)?(?:Z|([+-](\d{2}):?(\d{2})))?$/,
-  );
-  if (!t) return false;
-  let n = Number(t[1]),
-    r = Number(t[2]),
-    s = Number(t[3]),
-    i = Number(t[4]),
-    o = Number(t[5]),
-    a = t[6] === void 0 ? 0 : Number(t[6]),
-    l = t[8] === void 0 ? null : Number(t[8]),
-    c = t[9] === void 0 ? null : Number(t[9]),
-    p = new Date(Date.UTC(n, r - 1, s)),
-    u =
-      p.getUTCFullYear() === n &&
-      p.getUTCMonth() === r - 1 &&
-      p.getUTCDate() === s,
-    f = i <= 24 && o <= 59 && a <= 59 && (i !== 24 || (o === 0 && a === 0)),
-    h = l === null || (c !== null && l <= 15 && c <= 59);
-  return u && f && h;
-}
 var Rr,
   wl = b(() => {
     Ue();
@@ -20429,18 +20409,19 @@ ${j}`),
                 }
                 x.stop("JWT signing key imported");
               }
+              const T = yh(await u.getApiKeys(C)),
+                L = `https://${C}.${u.projectDomain}`,
+                hostedTarget = hostedUpgradeTarget(u, C, L, T.service_role);
               let A = (
                   await Wr("apply", () =>
                     Lc(
                       i,
-                      {
-                        runSql: (R) => u.runSql(C, R),
-                        updateAuthConfig: (R) => u.updateAuthConfig(C, R),
-                      },
+                      hostedTarget,
                       o,
                       {
                         migrateSessions: y,
                         authTarget: "supabase",
+                        storage: a.storage,
                         signal: x.signal,
                         onSql: (R, F) => {
                           t.verbose &&
@@ -20477,8 +20458,6 @@ ${R}`),
                     ),
                   )
                 ).auth,
-                T = yh(await u.getApiKeys(C)),
-                L = `https://${C}.${u.projectDomain}`,
                 E = [];
               if (
                 (y
@@ -20492,8 +20471,6 @@ ${R}`),
                   : E.push(
                       "Sessions and JWT secret not migrated. Existing tokens are invalid \u2014 users must re-authenticate.",
                     ),
-                i.config.storage?.enabled &&
-                  E.push("Storage migration is not yet supported."),
                 i.config.realtime?.enabled &&
                   E.push("Realtime config migration is not yet supported."),
                 t.dumpCredentials)
@@ -20509,7 +20486,7 @@ ${R}`),
                   null,
                   2,
                 );
-                (await he__default.writeFile(t.dumpCredentials, R, "utf-8"),
+                (await writeLocalCredentials(t.dumpCredentials, R),
                   console.log(
                     Ce.default.dim(
                       `Credentials written to ${t.dumpCredentials}`,

@@ -340,8 +340,8 @@ export async function inspectStorage(
   // Storage is enabled by default in Lite config even when it has never been used.
   if (!rows.buckets.length && !rows.objects.length && !files.length)
     return null;
-  if (target !== "local")
-    fail("Storage requires --target local; hosted graduation is unsupported");
+  if (!["local", "hosted"].includes(target))
+    fail("Storage requires --target local or --target hosted");
   if (!quiescent)
     fail(
       "stop source writers, then pass --storage-quiescent for the snapshot/transfer window",
@@ -574,16 +574,21 @@ export async function storageState(query) {
 }
 function targetOrigin(target) {
   const url = new URL(target.status.apiUrl);
+  const hosted = target.status.target === "hosted";
+  const projectRef = target.status.projectRef;
+  const permittedOrigin = hosted
+    ? typeof projectRef === "string" &&
+      /^[a-z]{20}$/.test(projectRef) &&
+      url.protocol === "https:" &&
+      url.hostname === `${projectRef}.supabase.co` &&
+      !url.port
+    : ["http:", "https:"].includes(url.protocol) &&
+      ["127.0.0.1", "[::1]", "localhost"].includes(url.hostname);
   if (
-    !["http:", "https:"].includes(url.protocol) ||
-    !["127.0.0.1", "[::1]", "localhost"].includes(url.hostname) ||
-    url.username ||
-    url.password ||
-    url.pathname !== "/" ||
-    url.search ||
-    url.hash
+    !permittedOrigin || url.username || url.password ||
+    url.pathname !== "/" || url.search || url.hash
   )
-    fail("only a loopback local Storage target is supported");
+    fail("Storage target must be loopback local or the exact HTTPS Supabase project origin");
   let claims;
   try {
     claims = JSON.parse(
@@ -596,6 +601,8 @@ function targetOrigin(target) {
     fail(
       "target service-role JWT must have no sub claim, so upload preserves existing owners",
     );
+  if (hosted && claims.ref !== projectRef)
+    fail("target service-role JWT does not belong to the hosted project");
   return url.origin;
 }
 const headers = (target) => ({

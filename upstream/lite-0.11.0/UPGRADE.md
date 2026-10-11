@@ -146,7 +146,7 @@ The shared upgrade runner applies statements in this order:
 3. `auth.identities`.
 4. Optional hosted session rows, when session migration is enabled.
 5. Optional hosted refresh token rows, when session migration is enabled.
-6. Local Storage buckets, object records and streamed file bytes, with identity/metadata and download-checksum verification.
+6. Storage buckets, object records and streamed file bytes, with identity/metadata and download-checksum verification.
 7. User table data, in foreign-key-safe order, then sequence resets. Storage is checked again for application-trigger side effects.
 8. Hosted auth config sync, when supported by the target.
 
@@ -200,9 +200,9 @@ lite upgrade --dry-run
 
 Rehearsal creates Supabase-compatible roles and the packaged Auth base schema before it applies project migrations. It then exercises the Auth and application data inserts against a Postgres-compatible engine.
 
-## Local filesystem Storage
+## Filesystem Storage graduation
 
-Storage graduation is limited to quiescent SQLite projects with PostgreSQL migrations and the stock CLI filesystem adapter (`EXPERIMENTAL_STORAGE=1`). Use a **new or empty target outside the source project**, with CLI 2.98.1 and its Storage 1.54.1 image:
+Storage graduation supports quiescent SQLite projects with PostgreSQL migrations and the stock CLI filesystem adapter (`EXPERIMENTAL_STORAGE=1`). Local upgrades use a **new or empty target outside the source project**. Hosted upgrades create a fresh Supabase project and use its exact HTTPS project origin and matching service-role JWT:
 
 ```bash
 EXPERIMENTAL_STORAGE=1 lite upgrade --target local --local-dir ../fresh-supabase \
@@ -213,13 +213,13 @@ Stop all source writers before starting and keep them stopped until completion. 
 
 The transfer restores original bucket/object IDs, owners, creation times, restrictions, user metadata and custom metadata, then uploads through the target API and verifies the downloaded bytes before importing application references. Object versions, backend ETags, physical modification times, object `updated_at` and access times may change. Sign in again and regenerate signed URLs for the new endpoint.
 
-Preflight rejects hosted targets, PGlite/native-SQLite sources, custom adapters/S3, multipart state, missing/orphan files, populated or migration-seeded Storage tables, and custom managed-table dependencies. Metadata must be JSON objects; SQL NULL, JSON null/scalar/array metadata and oversized user-metadata headers are rejected. The pinned target accepts ASCII object names only: Unicode, `%`, `#`, brackets, backslashes, dot path segments, special folder placeholders and `xRobotsTag` metadata require a separate migration strategy. Image transformations are not migrated.
+Preflight rejects PGlite/native-SQLite sources, custom adapters/S3, multipart state, missing/orphan files, populated Storage tables, conflicting or unrelated migration-seeded buckets, and custom managed-table dependencies. Metadata must be JSON objects; SQL NULL, JSON null/scalar/array metadata and oversized user-metadata headers are rejected. This bounded transfer accepts ASCII object names only: Unicode, `%`, `#`, brackets, backslashes, dot path segments, special folder placeholders and `xRobotsTag` metadata require a separate migration strategy. Image transformations are not migrated.
 
 There is no atomic cross-database/filesystem snapshot or automatic target rollback. A transfer or verification error stops the upgrade, leaves the source intact and reports a partial target. Stop only that target, keep the source, and retry into a different fresh directory. Do not delete the source's `supabase/.temp/storage` when cleaning up.
 
 ## Known Gaps
 
-Storage graduation outside the bounded local filesystem path above is not implemented.
+Storage graduation requires the stock filesystem source and either a loopback local target or the matching `<project-ref>.supabase.co` HTTPS origin. Custom hosted domains and other source adapters require a separate migration strategy.
 
 Realtime config migration is not implemented. If realtime is enabled, the command warns but continues.
 

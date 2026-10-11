@@ -1,3 +1,4 @@
+import { isIsoTimestamp as tx } from "./timestamp-storage.js";
 import { compileSqlFunction, functionKey, applyFunctionGrant, dropSqlFunction, translateFunctionParameter, translateJsonFunction, translateJsonRecordset, executeSqliteRpc } from "./sqlite-functions.js";
 import { parseTriggerFunction, compileSqliteTrigger, buildTriggerBody, translateTriggerExpression, translateTriggerDml } from "./sqlite-triggers.js";
 import { mergeFilter } from "./query/merge-filters.js";
@@ -1359,28 +1360,6 @@ var Ts,
       }
     };
   });
-function tx(t) {
-  let e = t.match(
-    /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,6})?)?(?:Z|([+-](\d{2}):?(\d{2})))?$/,
-  );
-  if (!e) return false;
-  let n = Number(e[1]),
-    r = Number(e[2]),
-    s = Number(e[3]),
-    i = Number(e[4]),
-    o = Number(e[5]),
-    a = e[6] === void 0 ? 0 : Number(e[6]),
-    l = e[8] === void 0 ? null : Number(e[8]),
-    c = e[9] === void 0 ? null : Number(e[9]),
-    u = new Date(Date.UTC(n, r - 1, s)),
-    f =
-      u.getUTCFullYear() === n &&
-      u.getUTCMonth() === r - 1 &&
-      u.getUTCDate() === s,
-    d = i <= 24 && o <= 59 && a <= 59 && (i !== 24 || (o === 0 && a === 0)),
-    p = l === null || (c !== null && l <= 15 && c <= 59);
-  return f && d && p;
-}
 var Rs,
   Tc = N(() => {
     rt();

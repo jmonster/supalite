@@ -1,3 +1,4 @@
+import { isIsoTimestamp as Fc } from "../timestamp-storage.js";
 import "pgsql-deparser";
 import * as le from "node:path";
 import le__default from "node:path";
@@ -2657,28 +2658,6 @@ var Rt,
       }
     };
   });
-function Fc(t) {
-  let e = t.match(
-    /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,6})?)?(?:Z|([+-](\d{2}):?(\d{2})))?$/,
-  );
-  if (!e) return false;
-  let n = Number(e[1]),
-    r = Number(e[2]),
-    i = Number(e[3]),
-    s = Number(e[4]),
-    o = Number(e[5]),
-    a = e[6] === void 0 ? 0 : Number(e[6]),
-    c = e[8] === void 0 ? null : Number(e[8]),
-    l = e[9] === void 0 ? null : Number(e[9]),
-    p = new Date(Date.UTC(n, r - 1, i)),
-    f =
-      p.getUTCFullYear() === n &&
-      p.getUTCMonth() === r - 1 &&
-      p.getUTCDate() === i,
-    u = s <= 24 && o <= 59 && a <= 59 && (s !== 24 || (o === 0 && a === 0)),
-    m = c === null || (l !== null && c <= 15 && l <= 59);
-  return f && u && m;
-}
 var kt,
   pr = F(() => {
     ce();

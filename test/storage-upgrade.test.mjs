@@ -10,6 +10,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { modules } from "./helpers/lite.mjs";
 import { isExperimentalEnabled, setExperimental } from "../upstream/lite-0.11.0/dist/index.js";
 import * as cli from "../upstream/lite-0.11.0/dist/cli/index.js";
+import { hostedUpgradeTarget } from "../upstream/lite-0.11.0/dist/cli/upgrade-hosted-target.js";
 import * as storage from "../upstream/lite-0.11.0/dist/cli/upgrade-storage.js";
 
 // PGlite proves SQL/rehearsal behavior only; it is not a Supabase Storage target.
@@ -325,13 +326,13 @@ test("preflight preserves empty/custom JSON and rejects unsupported null/path va
   }
 });
 
-for (const [firstName, keepInitialVersion] of [[files[0].name,false],[files[1].name,false],[files[0].name,true]])
-test(keepInitialVersion ? "upload must replace its temporary version" : `previous-version cleanup preserves ${firstName} and app references (mock HTTP)`, { concurrency: false }, async t => {
+for (const [firstName, keepInitialVersion, hosted] of [[files[0].name,false],[files[1].name,false],[files[0].name,true],[files[0].name,false,true]])
+test(hosted ? "hosted transfer preserves object identity, metadata, bytes and application references (mock HTTPS)" : keepInitialVersion ? "upload must replace its temporary version" : `previous-version cleanup preserves ${firstName} and app references (mock HTTP)`, { concurrency: false }, async t => {
   const source = await fixture(t);
   await source.connection.exec('UPDATE "storage.objects" SET version = NULL WHERE name = ?',files[0].name);
   await source.connection.exec('UPDATE "storage.objects" SET version = ? WHERE name = ?',"source-only/arbitrary",files[1].name);
   const before = await sourceState(source);
-  const snapshot = await storage.inspectStorage(source.app, source.options);
+  const snapshot = await storage.inspectStorage(source.app, { ...source.options, target: hosted ? "hosted" : "local" });
   snapshot.objects.sort((a,b) => Number(b.row.name === firstName)-Number(a.row.name === firstName));
   const { getStorageSchemaSql } = await import("../upstream/lite-0.11.0/dist/index.js");
   let target = new PGlite();
@@ -346,12 +347,15 @@ test(keepInitialVersion ? "upload must replace its temporary version" : `previou
   assert.equal(await storage.storageShape(query), shape, "incoming app FKs and policies do not alter managed Storage shape");
   // Exercise the production happy path against real SQL plus a tiny HTTP double.
   // This proves orchestration, not storage-api's upsert semantics or live parity.
-  const key = `e30.${Buffer.from('{"role":"service_role"}').toString("base64url")}.fixture`;
+  const projectRef = "abcdefghijabcdefghij";
+  const origin = hosted ? `https://${projectRef}.supabase.co` : "http://127.0.0.1:54321";
+  const key = `e30.${Buffer.from(JSON.stringify({ role: "service_role", ...(hosted ? {ref: projectRef} : {}) })).toString("base64url")}.fixture`;
   const uploads = new Map(), previousVersions = [];
   const backend = await mkdtemp(join(tmpdir(),"storage-versioned-target-"));
   t.after(()=>rm(backend,{recursive:true,force:true}));
   let downloads = 0;
   const mocked = t.mock.method(globalThis,"fetch",async (url,options) => {
+    assert.equal(new URL(url).origin, origin);
     const path = new URL(url).pathname.replace(/^\/storage\/v1\/object\/(?:authenticated\/)?/,"").split("/").map(decodeURIComponent);
     const bucket = path.shift(), name = path.join("/");
     const directory = join(backend,bucket,name);
@@ -383,7 +387,10 @@ test(keepInitialVersion ? "upload must replace its temporary version" : `previou
     }
   });
   try {
-    const transfer = storage.transferStorage(source.app,snapshot,{status:{apiUrl:"http://127.0.0.1:54321",serviceRoleKey:key},runSql:query});
+    const destination = hosted
+      ? hostedUpgradeTarget({runSql: async (_ref, sql) => (await query(sql)).rows}, projectRef, origin, key)
+      : {status:{apiUrl:origin,serviceRoleKey:key},runSql:query};
+    const transfer = storage.transferStorage(source.app,snapshot,destination);
     if (keepInitialVersion) {
       await assert.rejects(transfer,/target operational metadata verification failed/);
       assert.equal(downloads,0,"an unchanged placeholder is rejected before download");
